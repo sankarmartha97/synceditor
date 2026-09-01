@@ -214,6 +214,38 @@ class _PropertiesPanelState extends State<PropertiesPanel> {
 
                     const SizedBox(height: 16),
 
+                    // Padding - Editable (for Container, Column, Row types)
+                    if (selectedWidget.type == 'Container' ||
+                        selectedWidget.type == 'Card' ||
+                        selectedWidget.type == 'Column' ||
+                        selectedWidget.type == 'Row') ...[
+                      _buildSection('Padding', [
+                        Card(
+                          child: Padding(
+                            padding: const EdgeInsets.all(12.0),
+                            child: _buildNumberInput(
+                              label: 'All Sides',
+                              value:
+                                  (selectedWidget.properties['padding'] as num?)
+                                      ?.toDouble() ??
+                                  0.0,
+                              min: 0,
+                              max: 100,
+                              onChanged: (newPadding) {
+                                _updateWidgetProperty(
+                                  context,
+                                  selectedWidget,
+                                  'padding',
+                                  newPadding,
+                                );
+                              },
+                            ),
+                          ),
+                        ),
+                      ]),
+                      const SizedBox(height: 16),
+                    ],
+
                     // Properties - Editable
                     if (selectedWidget.properties.isNotEmpty) ...[
                       _buildSection('Widget Properties', [

@@ -258,27 +258,9 @@ class _PageCanvasViewState extends State<PageCanvasView> {
             print('🎨 Showing ORANGE border for widget ${widget.id}');
           }
 
-          return Container(
-            decoration: BoxDecoration(
-              border: isSelected
-                  ? Border.all(color: Colors.blue, width: 2.5)
-                  : hasOtherUserSelection
-                  ? Border.all(
-                      color: Colors.orange,
-                      width: 2.5,
-                      style: BorderStyle.solid,
-                    )
-                  : isHovering
-                  ? Border.all(
-                      color: Colors.green,
-                      width: 2,
-                      style: BorderStyle.solid,
-                    )
-                  : null,
-              borderRadius: BorderRadius.circular(
-                (widget.properties['borderRadius'] as num?)?.toDouble() ?? 8.0,
-              ),
-            ),
+          return SizedBox(
+            width: widget.size.width,
+            height: widget.size.height,
             child: Stack(
               clipBehavior: Clip.none,
               children: [
@@ -291,6 +273,37 @@ class _PageCanvasViewState extends State<PageCanvasView> {
                   allWidgets,
                 ),
 
+                // Selection/hover border overlay
+                if (isSelected || hasOtherUserSelection || isHovering)
+                  Positioned.fill(
+                    child: IgnorePointer(
+                      child: Container(
+                        decoration: BoxDecoration(
+                          border: isSelected
+                              ? Border.all(color: Colors.blue, width: 2.5)
+                              : hasOtherUserSelection
+                              ? Border.all(
+                                  color: Colors.orange,
+                                  width: 2.5,
+                                  style: BorderStyle.solid,
+                                )
+                              : isHovering
+                              ? Border.all(
+                                  color: Colors.green,
+                                  width: 2,
+                                  style: BorderStyle.solid,
+                                )
+                              : null,
+                          borderRadius: BorderRadius.circular(
+                            (widget.properties['borderRadius'] as num?)
+                                    ?.toDouble() ??
+                                8.0,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+
                 // Drop zone indicator
                 if (isHovering)
                   Positioned.fill(
@@ -298,7 +311,6 @@ class _PageCanvasViewState extends State<PageCanvasView> {
                       child: Container(
                         decoration: BoxDecoration(
                           color: Colors.green.withOpacity(0.05),
-                          border: Border.all(color: Colors.green, width: 2),
                           borderRadius: BorderRadius.circular(8),
                         ),
                         child: Center(
@@ -333,27 +345,46 @@ class _PageCanvasViewState extends State<PageCanvasView> {
       // Regular widget (no children)
       final hasOtherUserSelection = selectedByOthers.isNotEmpty;
 
-      return Container(
-        decoration: BoxDecoration(
-          border: isSelected
-              ? Border.all(color: Colors.blue, width: 2.5)
-              : hasOtherUserSelection
-              ? Border.all(
-                  color: Colors.orange,
-                  width: 2.5,
-                  style: BorderStyle.solid,
-                )
-              : null,
-          borderRadius: BorderRadius.circular(
-            (widget.properties['borderRadius'] as num?)?.toDouble() ?? 8.0,
-          ),
-        ),
-        child: _buildWidgetContent(
-          widget,
-          false,
-          isSelected,
-          children,
-          allWidgets,
+      return SizedBox(
+        width: widget.size.width,
+        height: widget.size.height,
+        child: Stack(
+          clipBehavior: Clip.none,
+          children: [
+            // Widget content
+            _buildWidgetContent(
+              widget,
+              false,
+              isSelected,
+              children,
+              allWidgets,
+            ),
+
+            // Selection/hover border overlay
+            if (isSelected || hasOtherUserSelection)
+              Positioned.fill(
+                child: IgnorePointer(
+                  child: Container(
+                    decoration: BoxDecoration(
+                      border: isSelected
+                          ? Border.all(color: Colors.blue, width: 2.5)
+                          : hasOtherUserSelection
+                          ? Border.all(
+                              color: Colors.orange,
+                              width: 2.5,
+                              style: BorderStyle.solid,
+                            )
+                          : null,
+                      borderRadius: BorderRadius.circular(
+                        (widget.properties['borderRadius'] as num?)
+                                ?.toDouble() ??
+                            8.0,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+          ],
         ),
       );
     }
@@ -531,7 +562,7 @@ class _PageCanvasViewState extends State<PageCanvasView> {
     } else if (widget.type == 'Text') {
       content = Center(
         child: Padding(
-          padding: const EdgeInsets.all(16.0),
+          padding: const EdgeInsets.all(5.0),
           child: Text(
             text ?? 'Sample Text',
             style: TextStyle(
@@ -577,6 +608,10 @@ class _PageCanvasViewState extends State<PageCanvasView> {
       );
     } else if (widget.type == 'Container' || widget.type == 'Card') {
       // Container and Card: Column layout (vertical stacking)
+      // Get padding from properties, default to 0.0
+      final paddingValue =
+          (widget.properties['padding'] as num?)?.toDouble() ?? 0.0;
+
       if (children.isEmpty) {
         // Empty container - show placeholder
         content = Center(
@@ -603,11 +638,11 @@ class _PageCanvasViewState extends State<PageCanvasView> {
       } else {
         // Has children - auto-arrange vertically using Flutter Column with scroll
         content = Padding(
-          padding: const EdgeInsets.all(8.0),
+          padding: EdgeInsets.all(paddingValue),
           child: SingleChildScrollView(
             child: Column(
               mainAxisAlignment: MainAxisAlignment.start,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
+              crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
                 ...renderedChildren.map((child) {
@@ -625,6 +660,10 @@ class _PageCanvasViewState extends State<PageCanvasView> {
       }
     } else if (widget.type == 'Column') {
       // Column layout: vertical stacking
+      // Get padding from properties, default to 0.0
+      final paddingValue =
+          (widget.properties['padding'] as num?)?.toDouble() ?? 0.0;
+
       if (children.isEmpty) {
         content = Center(
           child: Column(
@@ -650,11 +689,11 @@ class _PageCanvasViewState extends State<PageCanvasView> {
       } else {
         // Has children - auto-arrange vertically using Flutter Column with scroll
         content = Padding(
-          padding: const EdgeInsets.all(8.0),
+          padding: EdgeInsets.all(paddingValue),
           child: SingleChildScrollView(
             child: Column(
               mainAxisAlignment: MainAxisAlignment.start,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
+              crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
                 ...renderedChildren.map((child) {
@@ -672,6 +711,10 @@ class _PageCanvasViewState extends State<PageCanvasView> {
       }
     } else if (widget.type == 'Row') {
       // Row layout: horizontal arrangement
+      // Get padding from properties, default to 0.0
+      final paddingValue =
+          (widget.properties['padding'] as num?)?.toDouble() ?? 0.0;
+
       if (children.isEmpty) {
         content = Center(
           child: Column(
@@ -697,12 +740,12 @@ class _PageCanvasViewState extends State<PageCanvasView> {
       } else {
         // Has children - auto-arrange horizontally using Flutter Row with scroll
         content = Padding(
-          padding: const EdgeInsets.all(8.0),
+          padding: EdgeInsets.all(paddingValue),
           child: SingleChildScrollView(
             scrollDirection: Axis.horizontal,
             child: Row(
               mainAxisAlignment: MainAxisAlignment.start,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
+              crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
                 ...renderedChildren.map((child) {
@@ -876,6 +919,14 @@ class _PageCanvasViewState extends State<PageCanvasView> {
     DraggableDetails details,
     List<PageWidget> allWidgets,
   ) {
+    // Skip canvas move for child widgets - they should only be moved via container drops
+    if (widget.parentId != null) {
+      print(
+        '⏭️ Skipping canvas move for child widget ${widget.id} - use container drop instead',
+      );
+      return;
+    }
+
     final renderBox = context.findRenderObject() as RenderBox?;
     if (renderBox == null) return;
 
