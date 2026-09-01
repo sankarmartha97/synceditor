@@ -1,0 +1,163 @@
+================================================================================
+                    CANVAS EDITOR - INSTALLATION GUIDE
+================================================================================
+
+I cannot directly install PostgreSQL and Redis because it requires:
+- Administrator privileges
+- Interactive prompts (passwords, confirmations)
+- GUI installation wizards
+
+But I've created scripts to make it EASY for you!
+
+================================================================================
+                            OPTION 1: EASIEST WAY
+================================================================================
+
+1. Find this file in your project folder:
+   
+   INSTALL.bat
+
+2. RIGHT-CLICK on it
+
+3. Select "Run as administrator"
+
+4. Wait 15-20 minutes for installation
+
+5. When done, run this in PowerShell:
+   
+   cd c:\Users\RedoQ\KuickStudio_Work_Space\SyncEditor
+   .\setup_database.ps1
+
+6. Done! Backend will auto-connect!
+
+================================================================================
+                        OPTION 2: MANUAL INSTALLATION
+================================================================================
+
+STEP 1: Install PostgreSQL
+---------------------------
+1. Download from: https://www.postgresql.org/download/windows/
+2. Run the installer
+3. Set password: postgres
+4. Keep port: 5432
+5. Install all components
+
+STEP 2: Install Redis
+----------------------
+1. Download from: https://github.com/microsoftarchive/redis/releases
+2. Download: Redis-x64-3.0.504.msi
+3. Run installer
+4. Keep defaults
+
+STEP 3: Setup Database
+----------------------
+Open PowerShell and run:
+
+    psql -U postgres -c "CREATE DATABASE canvas_db;"
+    psql -U postgres -c "CREATE USER canvas_user WITH PASSWORD 'canvas_pass';"
+    psql -U postgres -c "GRANT ALL PRIVILEGES ON DATABASE canvas_db TO canvas_user;"
+
+STEP 4: Run Migrations
+----------------------
+    cd c:\Users\RedoQ\KuickStudio_Work_Space\SyncEditor\database
+    psql -U canvas_user -d canvas_db -f schema.sql
+    psql -U canvas_user -d canvas_db -f migrations/001_create_users_table.sql
+    psql -U canvas_user -d canvas_db -f migrations/002_create_canvases_table.sql
+    psql -U canvas_user -d canvas_db -f migrations/003_create_widgets_table.sql
+    psql -U canvas_user -d canvas_db -f migrations/004_create_versions_and_collaborators.sql
+
+================================================================================
+                              WHAT'S READY NOW
+================================================================================
+
+✅ Frontend - Running in Chrome at http://127.0.0.1:56153
+✅ Backend Code - Compiled and ready
+✅ Installation Scripts - Created for you!
+✅ Database Migrations - Ready to run
+✅ Documentation - Complete!
+
+⏳ PostgreSQL - Needs installation
+⏳ Redis - Needs installation
+
+================================================================================
+                           AFTER INSTALLATION
+================================================================================
+
+The backend will automatically connect once databases are ready!
+
+You'll see in the backend terminal:
+    ✅ Database connected
+    ✅ Redis connected
+    🚀 Server running on http://localhost:5000
+
+Then you can:
+1. Register a user
+2. Create canvases
+3. Add widgets
+4. See real-time collaboration!
+
+================================================================================
+                              TROUBLESHOOTING
+================================================================================
+
+Problem: Script won't run
+Solution: Right-click → "Run as administrator"
+
+Problem: Chocolatey permission error
+Solution: 
+    1. Open PowerShell as Administrator
+    2. Run: choco install postgresql16 -y --force
+    3. Run: choco install redis-64 -y --force
+
+Problem: Services not starting
+Solution:
+    Get-Service postgresql*
+    Start-Service postgresql-x64-16
+    Get-Service Redis
+    Start-Service Redis
+
+Problem: Backend still not connecting
+Solution:
+    1. Check services are running (above commands)
+    2. Restart backend terminal (Ctrl+C, then npm run dev)
+    3. Check .env file has correct credentials
+
+================================================================================
+                              FILES REFERENCE
+================================================================================
+
+INSTALL.bat              ← START HERE! Right-click → Run as admin
+setup_database.ps1       ← Run after installation
+START_HERE.md           ← Simple guide
+README_INSTALL.md       ← Detailed instructions
+QUICK_START.md          ← Quick reference
+INSTALLATION_GUIDE.md   ← Complete manual
+
+================================================================================
+                            ESTIMATED TIME
+================================================================================
+
+Installation:     15-20 minutes
+Database Setup:   2-3 minutes
+Total:           20-25 minutes
+
+================================================================================
+                              NEED HELP?
+================================================================================
+
+Check backend terminal for errors
+Verify services are running
+Read documentation files
+Check PostgreSQL logs: C:\Program Files\PostgreSQL\16\data\log
+
+================================================================================
+
+READY TO START?
+
+→ Right-click INSTALL.bat
+→ Select "Run as administrator"  
+→ Wait for installation
+→ Run setup_database.ps1
+→ Enjoy your Canvas Editor! 🎨
+
+================================================================================

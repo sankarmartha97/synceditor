@@ -1,0 +1,9 @@
+PS C:\Users\RedoQ\KuickStudio_Work_Space\SyncEditor> $env:PGPASSWORD="postgres"; & "C:\Program Files\PostgreSQL\16\bin\psql.exe" -U postgres -c "CREATE DATABASE canvas_db;"
+CREATE DATABASE
+PS C:\Users\RedoQ\KuickStudio_Work_Space\SyncEditor> $env:PGPASSWORD="postgres"; & "C:\Program Files\PostgreSQL\16\bin\psql.exe" -U postgres -c "CREATE USER canvas_user WITH PASSWORD 'canvas_pass';"
+CREATE ROLE
+PS C:\Users\RedoQ\KuickStudio_Work_Space\SyncEditor> $env:PGPASSWORD="postgres"; & "C:\Program Files\PostgreSQL\16\bin\psql.exe" -U postgres -c "GRANT ALL PRIVILEGES ON DATABASE canvas_db TO canvas_user;"
+GRANT
+PS C:\Users\RedoQ\KuickStudio_Work_Space\SyncEditor> $env:PGPASSWORD="postgres"; & "C:\Program Files\PostgreSQL\16\bin\psql.exe" -U postgres -d canvas_db -c "GRANT ALL ON SCHEMA public TO canvas_user;"
+GRANT
+PS C:\Users\RedoQ\KuickStudio_Work_Space\SyncEditor> cd c:\Users\RedoQ\KuickStudio_Work_Space\SyncEditor\database; $env:PGPASSWORD="canvas_pass"; & "C:\Program Files\PostgreSQL\16\bin\psql.exe" -U canvas_user -d canvas_db -f schema.sql

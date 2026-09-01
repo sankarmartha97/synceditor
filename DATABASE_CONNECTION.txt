@@ -1,0 +1,132 @@
+╔═══════════════════════════════════════════════════════════╗
+║       CANVAS EDITOR - DATABASE CONNECTION INFO            ║
+╚═══════════════════════════════════════════════════════════╝
+
+📊 PostgreSQL Database Credentials
+═══════════════════════════════════════════════════════════
+
+Connection Type:    PostgreSQL
+Host/Server:        localhost
+Port:               5432
+Database Name:      canvas_db
+Username:           canvas_user
+Password:           canvas_pass
+
+═══════════════════════════════════════════════════════════
+
+🗂️  Database Tables (5 tables)
+═══════════════════════════════════════════════════════════
+
+1. users
+   - id, email, password_hash, name, avatar_url
+   - created_at, updated_at
+
+2. canvases
+   - id, owner_id, name, description, settings
+   - is_public, created_at, updated_at
+
+3. widgets
+   - id, canvas_id, type, position, size
+   - properties, parent_id, created_at, updated_at
+
+4. canvas_collaborators
+   - id, canvas_id, user_id, role
+   - created_at
+
+5. widget_versions
+   - id, widget_id, canvas_id, operation
+   - data, created_by, created_at
+
+═══════════════════════════════════════════════════════════
+
+🔌 How to Connect in pgAdmin:
+═══════════════════════════════════════════════════════════
+
+1. Open pgAdmin 4
+2. Right-click "Servers" → "Register" → "Server"
+3. In "General" tab:
+   Name: Canvas Editor DB
+
+4. In "Connection" tab:
+   Host name/address: localhost
+   Port: 5432
+   Maintenance database: canvas_db
+   Username: canvas_user
+   Password: canvas_pass
+   ✓ Save password (optional)
+
+5. Click "Save"
+
+═══════════════════════════════════════════════════════════
+
+🔌 How to Connect in DBeaver:
+═══════════════════════════════════════════════════════════
+
+1. Open DBeaver
+2. Click "New Database Connection" (plug icon)
+3. Select "PostgreSQL" → Next
+4. Enter connection settings:
+   Host: localhost
+   Port: 5432
+   Database: canvas_db
+   Username: canvas_user
+   Password: canvas_pass
+   ✓ Save password
+
+5. Click "Test Connection"
+6. Click "Finish"
+
+═══════════════════════════════════════════════════════════
+
+📋 Quick SQL Queries to Try:
+═══════════════════════════════════════════════════════════
+
+-- View all users
+SELECT * FROM users;
+
+-- View all canvases with owner names
+SELECT c.*, u.name as owner_name 
+FROM canvases c 
+JOIN users u ON c.owner_id = u.id;
+
+-- Count widgets per canvas
+SELECT c.name, COUNT(w.id) as widget_count
+FROM canvases c
+LEFT JOIN widgets w ON c.id = w.canvas_id
+GROUP BY c.id, c.name;
+
+-- View recent widget changes
+SELECT * FROM widget_versions 
+ORDER BY created_at DESC 
+LIMIT 10;
+
+-- View canvas collaborators
+SELECT c.name as canvas_name, 
+       u.name as collaborator_name,
+       cc.role
+FROM canvas_collaborators cc
+JOIN canvases c ON cc.canvas_id = c.id
+JOIN users u ON cc.user_id = u.id;
+
+═══════════════════════════════════════════════════════════
+
+✅ Current Status:
+═══════════════════════════════════════════════════════════
+
+✓ PostgreSQL 16 is running
+✓ Database 'canvas_db' exists
+✓ All 5 tables created
+✓ Backend API connected and working
+✓ Test data available from API tests
+
+═══════════════════════════════════════════════════════════
+
+📚 Additional Resources:
+═══════════════════════════════════════════════════════════
+
+Installation Guide: INSTALL_POSTGRESQL_GUI.md
+Database Schema:    database/schema.sql
+Migrations:         database/migrations/
+Testing Results:    TEST_RESULTS.md
+
+═══════════════════════════════════════════════════════════

@@ -1,0 +1,115 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: canvas_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: canvas_user
+      POSTGRES_PASSWORD: canvas_pass
+      POSTGRES_DB: canvas_db
+      PGDATA: /var/lib/postgresql/data/pgdata
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./database/schema.sql:/docker-entrypoint-initdb.d/01_schema.sql
+      - ./database/seeds/sample_data.sql:/docker-entrypoint-initdb.d/02_seeds.sql
+    networks:
+      - canvas_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U canvas_user -d canvas_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis Cache
+  redis:
+    image: redis:7-alpine
+    container_name: canvas_redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - canvas_network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Backend API
+  backend:
+    build:
+      context: ./backend
+      dockerfile: ../deployment/docker/Dockerfile.backend
+    container_name: canvas_backend
+    restart: unless-stopped
+    environment:
+      NODE_ENV: development
+      PORT: 5000
+      DATABASE_URL: postgresql://canvas_user:canvas_pass@postgres:5432/canvas_db
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: canvas_db
+      DB_USER: canvas_user
+      DB_PASSWORD: canvas_pass
+      REDIS_URL: redis://redis:6379
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      JWT_SECRET: dev_jwt_secret_change_in_production_12345
+      JWT_EXPIRES_IN: 7d
+      FRONTEND_URL: http://localhost:3000
+      ALLOWED_ORIGINS: http://localhost:3000,http://localhost:8080
+    ports:
+      - "5000:5000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./backend/src:/app/src
+      - ./backend/package.json:/app/package.json
+      - ./backend/tsconfig.json:/app/tsconfig.json
+      - backend_node_modules:/app/node_modules
+    networks:
+      - canvas_network
+    command: npm run dev
+
+  # Frontend (Flutter Web) - Optional for Docker
+  # Uncomment when Dockerfile.frontend is ready
+  # frontend:
+  #   build:
+  #     context: ./frontend
+  #     dockerfile: ../deployment/docker/Dockerfile.frontend
+  #   container_name: canvas_frontend
+  #   restart: unless-stopped
+  #   environment:
+  #     API_URL: http://localhost:5000
+  #     WS_URL: ws://localhost:5000
+  #   ports:
+  #     - "3000:80"
+  #   depends_on:
+  #     - backend
+  #   networks:
+  #     - canvas_network
+
+# Named volumes for data persistence
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+  backend_node_modules:
+    driver: local
+
+# Custom network
+networks:
+  canvas_network:
+    driver: bridge
