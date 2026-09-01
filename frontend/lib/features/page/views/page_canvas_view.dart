@@ -205,6 +205,7 @@ class _PageCanvasViewState extends State<PageCanvasView> {
             isSelected,
             children,
             allWidgets,
+            state,
             selectedByOthers: selectedByOthers,
           ),
         ),
@@ -217,7 +218,8 @@ class _PageCanvasViewState extends State<PageCanvasView> {
     PageWidget widget,
     bool isSelected,
     List<PageWidget> children,
-    List<PageWidget> allWidgets, {
+    List<PageWidget> allWidgets,
+    PageState state, {
     List<MapEntry<String, String?>> selectedByOthers = const [],
   }) {
     if (widget.isContainer) {
@@ -256,6 +258,15 @@ class _PageCanvasViewState extends State<PageCanvasView> {
           // Debug: Print border decision
           if (hasOtherUserSelection) {
             print('🎨 Showing ORANGE border for widget ${widget.id}');
+          }
+
+          // Get the user name for the selection label
+          String? selectedByUserName;
+          if (hasOtherUserSelection) {
+            final userId = selectedByOthers.first.key;
+            // Get userName from otherUsersNames map (sent with selection event)
+            selectedByUserName = state.otherUsersNames[userId] ?? userId.substring(0, 8);
+            print('??? User name for label: $selectedByUserName');
           }
 
           return SizedBox(
@@ -304,6 +315,38 @@ class _PageCanvasViewState extends State<PageCanvasView> {
                     ),
                   ),
 
+                // User name label for other users' selections
+                if (hasOtherUserSelection && selectedByUserName != null)
+                  Positioned(
+                    left: 0,
+                    top: -24,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 4,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.orange,
+                        borderRadius: BorderRadius.circular(4),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.2),
+                            blurRadius: 4,
+                            offset: const Offset(0, 2),
+                          ),
+                        ],
+                      ),
+                      child: Text(
+                        selectedByUserName,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ),
+
                 // Drop zone indicator
                 if (isHovering)
                   Positioned.fill(
@@ -345,6 +388,15 @@ class _PageCanvasViewState extends State<PageCanvasView> {
       // Regular widget (no children)
       final hasOtherUserSelection = selectedByOthers.isNotEmpty;
 
+      // Get the user name for the selection label
+      String? selectedByUserName;
+      if (hasOtherUserSelection) {
+            final userId = selectedByOthers.first.key;
+            // Get userName from otherUsersNames map (sent with selection event)
+            selectedByUserName = state.otherUsersNames[userId] ?? userId.substring(0, 8);
+            print('??? User name for label: $selectedByUserName');
+          }
+
       return SizedBox(
         width: widget.size.width,
         height: widget.size.height,
@@ -380,6 +432,38 @@ class _PageCanvasViewState extends State<PageCanvasView> {
                                 ?.toDouble() ??
                             8.0,
                       ),
+                    ),
+                  ),
+                ),
+              ),
+
+            // User name label for other users' selections
+            if (hasOtherUserSelection && selectedByUserName != null)
+              Positioned(
+                left: 0,
+                top: -24,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 4,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.orange,
+                    borderRadius: BorderRadius.circular(4),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.2),
+                        blurRadius: 4,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: Text(
+                    selectedByUserName,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
                     ),
                   ),
                 ),

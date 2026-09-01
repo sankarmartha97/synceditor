@@ -495,7 +495,7 @@ class _PageEditorScreenState extends State<PageEditorScreen> {
                     child: const PropertiesPanel(),
                   ),
                 // Active Users List (sidebar)
-                if (_showActiveUsers && state.activeUsers.isNotEmpty)
+                if (_showActiveUsers)
                   ActiveUsersList(
                     users: state.activeUsers,
                     currentUserId: null, // TODO: Get current user ID from auth

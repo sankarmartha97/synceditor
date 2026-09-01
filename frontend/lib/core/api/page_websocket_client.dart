@@ -248,6 +248,7 @@ class PageWebSocketClient {
       _pageSelectionController.add(
         PageSelectionEvent(
           userId: data['userId'],
+          userName: data['userName'],
           widgetId: data['widgetId'],
           timestamp: DateTime.parse(data['timestamp']),
         ),
@@ -634,11 +635,13 @@ class PageCursorEvent {
 
 class PageSelectionEvent {
   final String userId;
+  final String? userName;
   final String? widgetId;
   final DateTime timestamp;
 
   PageSelectionEvent({
     required this.userId,
+    this.userName,
     required this.widgetId,
     required this.timestamp,
   });

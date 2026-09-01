@@ -27,6 +27,7 @@ class PageBloc extends Bloc<PageEvent, PageState> {
   StreamSubscription? _patchReceivedSubscription;
   StreamSubscription? _patchAppliedSubscription;
   StreamSubscription? _conflictSubscription;
+  StreamSubscription? _pageJoinedSubscription;
   StreamSubscription? _userJoinedSubscription;
   StreamSubscription? _userLeftSubscription;
   StreamSubscription? _cursorUpdatedSubscription;
@@ -103,14 +104,23 @@ class PageBloc extends Bloc<PageEvent, PageState> {
       add(HandlePatchConflict(event));
     });
 
+    // Listen to page joined event to get initial active users list
+    _pageJoinedSubscription = _wsClient.pageJoinedEvents.listen((event) {
+      print('📄 Joined page: ${event.pageId}');
+      print('👥 Active users received: ${event.activeUsers.length}');
+
+      // Convert to List<Map<String, dynamic>> for UpdateActiveUsers
+      final usersData = event.activeUsers
+          .map((user) => {'userId': user.userId, 'name': user.name})
+          .toList();
+
+      add(UpdateActiveUsers(usersData));
+    });
+
     // Listen to user presence
     _userJoinedSubscription = _wsClient.userJoinedEvents.listen((event) {
       print('👤 User joined: ${event.user?.name}');
-      // Update active users when someone joins
-      if (event.user != null) {
-        // Reload active users from the event
-        // (This would need to be added to the WebSocket client events)
-      }
+      // The page:joined event will update the full active users list
     });
 
     _userLeftSubscription = _wsClient.userLeftEvents.listen((event) {
@@ -312,18 +322,29 @@ class PageBloc extends Bloc<PageEvent, PageState> {
         state.otherUsersSelections,
       );
 
+      // Update users names map
+      final updatedUserNames = Map<String, String>.from(state.otherUsersNames);
+
       if (selectionEvent.widgetId == null) {
         // Remove selection if widgetId is null
         updatedSelections.remove(selectionEvent.userId);
+        updatedUserNames.remove(selectionEvent.userId);
       } else {
-        // Update selection
+        // Update selection and store userName
         updatedSelections[selectionEvent.userId] = selectionEvent.widgetId;
+        updatedUserNames[selectionEvent.userId] =
+            selectionEvent.userName ?? 'Unknown User';
       }
 
-      emit(state.copyWith(otherUsersSelections: updatedSelections));
+      emit(
+        state.copyWith(
+          otherUsersSelections: updatedSelections,
+          otherUsersNames: updatedUserNames,
+        ),
+      );
 
       print(
-        '✨ Updated selection for user ${selectionEvent.userId}: ${selectionEvent.widgetId}',
+        '✨ Updated selection for user ${selectionEvent.userId} (${selectionEvent.userName}): ${selectionEvent.widgetId}',
       );
     } catch (e, stack) {
       print('❌ Error updating remote selection: $e');
@@ -480,6 +501,7 @@ class PageBloc extends Bloc<PageEvent, PageState> {
     _patchReceivedSubscription?.cancel();
     _patchAppliedSubscription?.cancel();
     _conflictSubscription?.cancel();
+    _pageJoinedSubscription?.cancel();
     _userJoinedSubscription?.cancel();
     _userLeftSubscription?.cancel();
     _cursorUpdatedSubscription?.cancel();

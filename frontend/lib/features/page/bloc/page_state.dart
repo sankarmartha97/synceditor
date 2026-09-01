@@ -19,6 +19,9 @@ class PageState extends Equatable {
   // Other users' selections (Map of userId -> widgetId)
   final Map<String, String?> otherUsersSelections;
 
+  // Other users' names (Map of userId -> userName)
+  final Map<String, String> otherUsersNames;
+
   // Permissions
   final List<PagePermission> permissions;
   final bool permissionsLoading;
@@ -48,6 +51,7 @@ class PageState extends Equatable {
     this.currentPageId,
     this.selectedWidgetId,
     this.otherUsersSelections = const {},
+    this.otherUsersNames = const {},
     this.permissions = const [],
     this.permissionsLoading = false,
     this.error,
@@ -111,6 +115,7 @@ class PageState extends Equatable {
     String? currentPageId,
     String? selectedWidgetId,
     Map<String, String?>? otherUsersSelections,
+    Map<String, String>? otherUsersNames,
     List<PagePermission>? permissions,
     bool? permissionsLoading,
     String? error,
@@ -136,6 +141,7 @@ class PageState extends Equatable {
           ? null
           : (selectedWidgetId ?? this.selectedWidgetId),
       otherUsersSelections: otherUsersSelections ?? this.otherUsersSelections,
+      otherUsersNames: otherUsersNames ?? this.otherUsersNames,
       permissions: permissions ?? this.permissions,
       permissionsLoading: permissionsLoading ?? this.permissionsLoading,
       error: clearError ? null : (error ?? this.error),
@@ -159,6 +165,7 @@ class PageState extends Equatable {
     currentPageId,
     selectedWidgetId,
     otherUsersSelections,
+    otherUsersNames,
     permissions,
     permissionsLoading,
     error,
