@@ -33,6 +33,7 @@ class PageEditorScreen extends StatefulWidget {
 
 class _PageEditorScreenState extends State<PageEditorScreen> {
   bool _showActiveUsers = true;
+  TransformationController? _canvasTransformationController;
 
   // Static shortcuts to avoid rebuilding on every build
   static final Map<LogicalKeySet, Intent> _shortcuts = {
@@ -393,30 +394,46 @@ class _PageEditorScreenState extends State<PageEditorScreen> {
                   ),
                 // Canvas with cursor tracking and overlay
                 Expanded(
-                  child: MouseRegion(
-                    onHover: (event) {
-                      // Send cursor position to other users
-                      if (canEdit && state.currentPage != null) {
-                        context.read<PageBloc>().add(
-                          SendCursorPosition(
-                            pageId: state.currentPage!.id,
-                            x: event.position.dx,
-                            y: event.position.dy,
-                          ),
-                        );
-                      }
-                    },
-                    child: Stack(
-                      children: [
-                        // Main canvas
-                        PageCanvasView(page: page),
-                        // Remote cursors overlay
-                        CursorOverlay(
-                          cursorManager: context.read<PageBloc>().cursorManager,
-                          showAnimations: true,
+                  child: LayoutBuilder(
+                    builder: (context, constraints) {
+                      return MouseRegion(
+                        onHover: (event) {
+                          // Send cursor position to other users
+                          if (canEdit && state.currentPage != null) {
+                            // Convert screen position to canvas-relative position
+                            // by subtracting the offset of the canvas container
+                            final RenderBox? renderBox =
+                                context.findRenderObject() as RenderBox?;
+                            if (renderBox != null) {
+                              final localPosition = renderBox.globalToLocal(
+                                event.position,
+                              );
+
+                              context.read<PageBloc>().add(
+                                SendCursorPosition(
+                                  pageId: state.currentPage!.id,
+                                  x: localPosition.dx,
+                                  y: localPosition.dy,
+                                ),
+                              );
+                            }
+                          }
+                        },
+                        child: Stack(
+                          children: [
+                            // Main canvas
+                            PageCanvasView(page: page),
+                            // Remote cursors overlay
+                            CursorOverlay(
+                              cursorManager: context
+                                  .read<PageBloc>()
+                                  .cursorManager,
+                              showAnimations: true,
+                            ),
+                          ],
                         ),
-                      ],
-                    ),
+                      );
+                    },
                   ),
                 ),
                 // Properties Panel

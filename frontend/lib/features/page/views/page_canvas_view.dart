@@ -9,8 +9,13 @@ import '../bloc/page_state.dart';
 
 class PageCanvasView extends StatefulWidget {
   final PageModel page;
+  final ValueChanged<TransformationController>? onTransformationControllerReady;
 
-  const PageCanvasView({super.key, required this.page});
+  const PageCanvasView({
+    super.key,
+    required this.page,
+    this.onTransformationControllerReady,
+  });
 
   @override
   State<PageCanvasView> createState() => _PageCanvasViewState();
@@ -19,6 +24,15 @@ class PageCanvasView extends StatefulWidget {
 class _PageCanvasViewState extends State<PageCanvasView> {
   final TransformationController _transformationController =
       TransformationController();
+
+  @override
+  void initState() {
+    super.initState();
+    // Notify parent that transformation controller is ready
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      widget.onTransformationControllerReady?.call(_transformationController);
+    });
+  }
 
   @override
   void dispose() {
