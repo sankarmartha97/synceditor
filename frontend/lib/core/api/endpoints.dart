@@ -1,7 +1,7 @@
 class ApiEndpoints {
   // Base URL - can be configured via environment variables
-  static const String baseUrl = 'http://192.168.1.26:5000';
-  static const String wsUrl = 'ws://192.168.1.26:5000';
+  static const String baseUrl = 'http://localhost:5000';
+  static const String wsUrl = 'ws://localhost:5000';
 
   // API Version
   static const String apiVersion = '/api';

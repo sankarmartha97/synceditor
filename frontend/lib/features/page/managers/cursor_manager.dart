@@ -100,12 +100,28 @@ class CursorManager {
 class CursorOverlay extends StatelessWidget {
   final CursorManager cursorManager;
   final bool showAnimations;
+  final TransformationController? transformationController;
 
   const CursorOverlay({
     Key? key,
     required this.cursorManager,
     this.showAnimations = true,
+    this.transformationController,
   }) : super(key: key);
+
+  /// Transform canvas coordinates to screen coordinates for display
+  Offset _transformPosition(Offset canvasPosition) {
+    if (transformationController == null) {
+      return canvasPosition; // No transformation if controller not available
+    }
+
+    try {
+      final matrix = transformationController!.value;
+      return MatrixUtils.transformPoint(matrix, canvasPosition);
+    } catch (e) {
+      return canvasPosition; // Fallback on error
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -121,13 +137,16 @@ class CursorOverlay extends StatelessWidget {
 
         return Stack(
           children: cursors.values.map((cursor) {
+            // Transform canvas position to screen position
+            final displayPosition = _transformPosition(cursor.position);
+
             if (showAnimations) {
               return RemoteCursor(
                 key: ValueKey(cursor.userId),
                 userId: cursor.userId,
                 userName: cursor.userName,
                 userColor: cursor.userColor,
-                position: cursor.position,
+                position: displayPosition,
               );
             } else {
               return SimpleCursor(
@@ -135,7 +154,7 @@ class CursorOverlay extends StatelessWidget {
                 userId: cursor.userId,
                 userName: cursor.userName,
                 userColor: cursor.userColor,
-                position: cursor.position,
+                position: displayPosition,
               );
             }
           }).toList(),

@@ -58,6 +58,42 @@ class _PageEditorScreenState extends State<PageEditorScreen> {
     context.read<PageBloc>().add(LoadPage(widget.pageId));
   }
 
+  /// Convert screen coordinates to canvas coordinates accounting for zoom/pan
+  Offset? _screenToCanvasCoordinates(Offset screenPosition) {
+    if (_canvasTransformationController == null) {
+      return screenPosition; // Fallback if controller not ready
+    }
+
+    try {
+      final matrix = _canvasTransformationController!.value;
+      final invertedMatrix = Matrix4.inverted(matrix);
+      final canvasPosition = MatrixUtils.transformPoint(
+        invertedMatrix,
+        screenPosition,
+      );
+      return canvasPosition;
+    } catch (e) {
+      print('⚠️ Error transforming coordinates: $e');
+      return screenPosition; // Fallback on error
+    }
+  }
+
+  /// Convert canvas coordinates to screen coordinates for display
+  Offset? _canvasToScreenCoordinates(Offset canvasPosition) {
+    if (_canvasTransformationController == null) {
+      return canvasPosition; // Fallback if controller not ready
+    }
+
+    try {
+      final matrix = _canvasTransformationController!.value;
+      final screenPosition = MatrixUtils.transformPoint(matrix, canvasPosition);
+      return screenPosition;
+    } catch (e) {
+      print('⚠️ Error transforming coordinates: $e');
+      return canvasPosition; // Fallback on error
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return BlocConsumer<PageBloc, PageState>(
@@ -400,8 +436,7 @@ class _PageEditorScreenState extends State<PageEditorScreen> {
                         onHover: (event) {
                           // Send cursor position to other users
                           if (canEdit && state.currentPage != null) {
-                            // Convert screen position to canvas-relative position
-                            // by subtracting the offset of the canvas container
+                            // Convert screen position to container-relative position
                             final RenderBox? renderBox =
                                 context.findRenderObject() as RenderBox?;
                             if (renderBox != null) {
@@ -409,26 +444,42 @@ class _PageEditorScreenState extends State<PageEditorScreen> {
                                 event.position,
                               );
 
-                              context.read<PageBloc>().add(
-                                SendCursorPosition(
-                                  pageId: state.currentPage!.id,
-                                  x: localPosition.dx,
-                                  y: localPosition.dy,
-                                ),
+                              // Transform to canvas coordinates (accounting for zoom/pan)
+                              final canvasPosition = _screenToCanvasCoordinates(
+                                localPosition,
                               );
+
+                              if (canvasPosition != null) {
+                                context.read<PageBloc>().add(
+                                  SendCursorPosition(
+                                    pageId: state.currentPage!.id,
+                                    x: canvasPosition.dx,
+                                    y: canvasPosition.dy,
+                                  ),
+                                );
+                              }
                             }
                           }
                         },
                         child: Stack(
                           children: [
                             // Main canvas
-                            PageCanvasView(page: page),
+                            PageCanvasView(
+                              page: page,
+                              onTransformationControllerReady: (controller) {
+                                setState(() {
+                                  _canvasTransformationController = controller;
+                                });
+                              },
+                            ),
                             // Remote cursors overlay
                             CursorOverlay(
                               cursorManager: context
                                   .read<PageBloc>()
                                   .cursorManager,
                               showAnimations: true,
+                              transformationController:
+                                  _canvasTransformationController,
                             ),
                           ],
                         ),
