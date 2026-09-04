@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:uuid/uuid.dart';
@@ -21,90 +22,251 @@ class PageCanvasView extends StatefulWidget {
   State<PageCanvasView> createState() => _PageCanvasViewState();
 }
 
-class _PageCanvasViewState extends State<PageCanvasView> {
+class _PageCanvasViewState extends State<PageCanvasView>
+    with SingleTickerProviderStateMixin {
   final TransformationController _transformationController =
       TransformationController();
+
+  // Viewport tracking
+  Timer? _viewportUpdateTimer;
+  AnimationController? _followAnimationController;
+  Animation<Matrix4>? _followAnimation;
+  bool _isAnimatingToFollowedViewport = false;
 
   @override
   void initState() {
     super.initState();
+
     // Notify parent that transformation controller is ready
     WidgetsBinding.instance.addPostFrameCallback((_) {
       widget.onTransformationControllerReady?.call(_transformationController);
     });
+
+    // Initialize follow animation controller (faster for better responsiveness)
+    _followAnimationController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 200),
+    );
+
+    // Listen to transformation changes to send viewport updates
+    _transformationController.addListener(_onTransformationChanged);
   }
 
   @override
   void dispose() {
+    _viewportUpdateTimer?.cancel();
+    _followAnimationController?.dispose();
+    _transformationController.removeListener(_onTransformationChanged);
     _transformationController.dispose();
     super.dispose();
   }
 
+  /// Called when transformation changes (pan/zoom)
+  void _onTransformationChanged() {
+    final state = context.read<PageBloc>().state;
+
+    // Don't send viewport updates if we're following someone or animating
+    if (state.isFollowing || _isAnimatingToFollowedViewport) return;
+
+    // Throttle viewport updates (max once per 50ms for better responsiveness)
+    _viewportUpdateTimer?.cancel();
+    _viewportUpdateTimer = Timer(const Duration(milliseconds: 50), () {
+      _sendViewportUpdate();
+    });
+  }
+
+  /// Send current viewport to followers
+  void _sendViewportUpdate() {
+    final state = context.read<PageBloc>().state;
+    if (state.currentPage == null || state.isFollowing) return;
+
+    final matrix = _transformationController.value;
+    final translation = matrix.getTranslation();
+    final scale = matrix.getMaxScaleOnAxis();
+
+    // Get render box to calculate viewport size
+    final renderBox = context.findRenderObject() as RenderBox?;
+    if (renderBox == null) return;
+
+    final size = renderBox.size;
+    final centerX = -translation.x / scale + (size.width / 2 / scale);
+    final centerY = -translation.y / scale + (size.height / 2 / scale);
+
+    final viewportData = {
+      'scrollX': -translation.x,
+      'scrollY': -translation.y,
+      'zoom': scale,
+      'centerX': centerX,
+      'centerY': centerY,
+      'width': size.width,
+      'height': size.height,
+      'timestamp': DateTime.now().toIso8601String(),
+    };
+
+    context.read<PageBloc>().add(
+      SendViewportUpdate(pageId: state.currentPage!.id, viewport: viewportData),
+    );
+  }
+
+  @override
+  void didUpdateWidget(PageCanvasView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+
+    // Check if we need to sync to followed user's viewport
+    // This will be called whenever PageBloc state changes
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final state = context.read<PageBloc>().state;
+      if (state.isFollowing && state.followedViewport != null) {
+        _animateToViewport(state.followedViewport);
+      }
+    });
+  }
+
+  /// Animate viewport to match followed user
+  void _animateToViewport(dynamic viewportData) {
+    if (_isAnimatingToFollowedViewport) return;
+
+    try {
+      final viewport = viewportData is Map
+          ? viewportData
+          : viewportData.toJson();
+
+      final zoom = (viewport['zoom'] as num?)?.toDouble() ?? 1.0;
+      final scrollX = (viewport['scrollX'] as num?)?.toDouble() ?? 0.0;
+      final scrollY = (viewport['scrollY'] as num?)?.toDouble() ?? 0.0;
+
+      print(
+        '📍 Syncing viewport: zoom=$zoom, scrollX=$scrollX, scrollY=$scrollY',
+      );
+
+      // Create target matrix directly from scroll and zoom values
+      final targetMatrix = Matrix4.identity()
+        ..translate(scrollX, scrollY)
+        ..scale(zoom);
+
+      // Animate smoothly to target viewport
+      _isAnimatingToFollowedViewport = true;
+
+      _followAnimation =
+          Matrix4Tween(
+            begin: _transformationController.value,
+            end: targetMatrix,
+          ).animate(
+            CurvedAnimation(
+              parent: _followAnimationController!,
+              curve: Curves.easeOutCubic,
+            ),
+          );
+
+      _followAnimation!.addListener(() {
+        _transformationController.value = _followAnimation!.value;
+      });
+
+      _followAnimationController!.forward(from: 0).then((_) {
+        _isAnimatingToFollowedViewport = false;
+        print('✅ Viewport sync complete');
+      });
+    } catch (e) {
+      print('❌ Error animating to viewport: $e');
+      _isAnimatingToFollowedViewport = false;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    return BlocBuilder<PageBloc, PageState>(
-      builder: (context, state) {
-        // Debug: Print other users' selections
-        if (state.otherUsersSelections.isNotEmpty) {
-          print('🔍 Other users selections: ${state.otherUsersSelections}');
+    return BlocListener<PageBloc, PageState>(
+      listenWhen: (previous, current) {
+        // Listen when followed viewport changes
+        return current.isFollowing &&
+            current.followedViewport != null &&
+            previous.followedViewport != current.followedViewport;
+      },
+      listener: (context, state) {
+        // Animate to followed user's viewport when it changes
+        if (state.isFollowing && state.followedViewport != null) {
+          print('🔍 Viewport update received - animating to followed viewport');
+          _animateToViewport(state.followedViewport);
         }
+      },
+      child: BlocBuilder<PageBloc, PageState>(
+        builder: (context, state) {
+          // Debug: Print other users' selections
+          if (state.otherUsersSelections.isNotEmpty) {
+            print('🔍 Other users selections: ${state.otherUsersSelections}');
+          }
 
-        // Use currentPage from state, not the prop
-        final page = state.currentPage ?? widget.page;
-        final metadata = page.pageData.metadata;
+          // Use currentPage from state, not the prop
+          final page = state.currentPage ?? widget.page;
+          final metadata = page.pageData.metadata;
 
-        // ✨ V2.1: Disable canvas drops - only allow drops into containers
-        return Container(
-          color: Colors.grey[100],
-          child: Stack(
-            children: [
-              // Grid (if enabled)
-              if (metadata.showGrid) _buildGrid(metadata),
-              // Canvas with widgets
-              InteractiveViewer(
-                transformationController: _transformationController,
-                boundaryMargin: const EdgeInsets.all(double.infinity),
-                minScale: 0.1,
-                maxScale: 5.0,
-                child: Container(
-                  width: metadata.width,
-                  height: metadata.height,
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.1),
-                        blurRadius: 10,
-                        spreadRadius: 2,
+          // ✨ V2.1: Disable canvas drops - only allow drops into containers
+          return Container(
+            color: Colors.grey[100],
+            child: Stack(
+              children: [
+                // Grid (if enabled)
+                if (metadata.showGrid) _buildGrid(metadata),
+                // Canvas with widgets - detect interaction to exit follow mode
+                GestureDetector(
+                  onScaleStart: state.isFollowing
+                      ? (_) => _exitFollowMode(context, state)
+                      : null,
+                  child: InteractiveViewer(
+                    transformationController: _transformationController,
+                    boundaryMargin: const EdgeInsets.all(double.infinity),
+                    minScale: 0.1,
+                    maxScale: 5.0,
+                    child: Container(
+                      width: metadata.width,
+                      height: metadata.height,
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.1),
+                            blurRadius: 10,
+                            spreadRadius: 2,
+                          ),
+                        ],
                       ),
-                    ],
-                  ),
-                  child: Stack(
-                    children: [
-                      // Render only root widgets (nested children rendered by parents)
-                      ...WidgetTreeHelper.getRootWidgets(
-                        page.pageData.widgets,
-                      ).map((widget) {
-                        // Force rebuild by including selection state in key
-                        final selectionKey = state.otherUsersSelections.entries
-                            .map((e) => '${e.key}:${e.value}')
-                            .join(',');
-                        return KeyedSubtree(
-                          key: ValueKey('${widget.id}_$selectionKey'),
-                          child: _buildWidget(context, widget, state),
-                        );
-                      }),
-                    ],
+                      child: Stack(
+                        children: [
+                          // Render only root widgets (nested children rendered by parents)
+                          ...WidgetTreeHelper.getRootWidgets(
+                            page.pageData.widgets,
+                          ).map((widget) {
+                            // Force rebuild by including selection state in key
+                            final selectionKey = state
+                                .otherUsersSelections
+                                .entries
+                                .map((e) => '${e.key}:${e.value}')
+                                .join(',');
+                            return KeyedSubtree(
+                              key: ValueKey('${widget.id}_$selectionKey'),
+                              child: _buildWidget(context, widget, state),
+                            );
+                          }),
+                        ],
+                      ),
+                    ),
                   ),
                 ),
-              ),
-              // Zoom controls
-              Positioned(bottom: 16, right: 16, child: _buildZoomControls()),
-            ],
-          ),
-        );
-      },
+                // Zoom controls
+                Positioned(bottom: 16, right: 16, child: _buildZoomControls()),
+              ],
+            ),
+          );
+        },
+      ),
     );
+  }
+
+  /// Exit follow mode when user interacts
+  void _exitFollowMode(BuildContext context, PageState state) {
+    if (!state.isFollowing || state.currentPage == null) return;
+
+    print('👁️‍🗨️ User interacted - exiting follow mode');
+    context.read<PageBloc>().add(FollowModeExitedByUser(state.currentPage!.id));
   }
 
   Widget _buildGrid(PageMetadata metadata) {
@@ -175,6 +337,9 @@ class _PageCanvasViewState extends State<PageCanvasView> {
   }) {
     final children = WidgetTreeHelper.getChildren(widget.id, allWidgets);
 
+    // Disable dragging if in follow mode
+    final bool canDrag = canEdit && !state.isFollowing;
+
     return Draggable<PageWidget>(
       data: widget,
       feedback: Transform.scale(
@@ -188,16 +353,18 @@ class _PageCanvasViewState extends State<PageCanvasView> {
         opacity: 0.3,
         child: _buildWidgetContent(widget, false, false, children, allWidgets),
       ),
-      onDragEnd: canEdit
+      onDragEnd: canDrag
           ? (details) => _handleWidgetMove(context, widget, details, allWidgets)
           : null,
       child: MouseRegion(
-        cursor: SystemMouseCursors.move,
+        cursor: canDrag ? SystemMouseCursors.move : SystemMouseCursors.basic,
         child: GestureDetector(
-          onTap: () {
-            print('🎯 Widget tapped: ${widget.type} - ${widget.id}');
-            context.read<PageBloc>().add(SelectPageWidget(widget.id));
-          },
+          onTap: canEdit && !state.isFollowing
+              ? () {
+                  print('🎯 Widget tapped: ${widget.type} - ${widget.id}');
+                  context.read<PageBloc>().add(SelectPageWidget(widget.id));
+                }
+              : null,
           behavior: HitTestBehavior.opaque,
           child: _buildContainerOrWidget(
             context,
@@ -223,10 +390,13 @@ class _PageCanvasViewState extends State<PageCanvasView> {
     List<MapEntry<String, String?>> selectedByOthers = const [],
   }) {
     if (widget.isContainer) {
+      // Disable dropping if in follow mode
+      final canAcceptDrop = state.canEdit && !state.isFollowing;
+
       // Container widget with drop target - accepts both library widgets and existing widgets
       return DragTarget<Object>(
         onWillAccept: (draggedData) {
-          if (draggedData == null) return false;
+          if (draggedData == null || !canAcceptDrop) return false;
 
           // Accept Map<String, dynamic> from widget library
           if (draggedData is Map<String, dynamic>) {
@@ -244,13 +414,15 @@ class _PageCanvasViewState extends State<PageCanvasView> {
 
           return false;
         },
-        onAccept: (draggedData) {
-          if (draggedData is Map<String, dynamic>) {
-            _handleLibraryDrop(context, draggedData, widget);
-          } else if (draggedData is PageWidget) {
-            _handleNestedDrop(context, draggedData, widget);
-          }
-        },
+        onAccept: canAcceptDrop
+            ? (draggedData) {
+                if (draggedData is Map<String, dynamic>) {
+                  _handleLibraryDrop(context, draggedData, widget);
+                } else if (draggedData is PageWidget) {
+                  _handleNestedDrop(context, draggedData, widget);
+                }
+              }
+            : null,
         builder: (context, candidateData, rejectedData) {
           final isHovering = candidateData.isNotEmpty;
           final hasOtherUserSelection = selectedByOthers.isNotEmpty;
@@ -265,7 +437,8 @@ class _PageCanvasViewState extends State<PageCanvasView> {
           if (hasOtherUserSelection) {
             final userId = selectedByOthers.first.key;
             // Get userName from otherUsersNames map (sent with selection event)
-            selectedByUserName = state.otherUsersNames[userId] ?? userId.substring(0, 8);
+            selectedByUserName =
+                state.otherUsersNames[userId] ?? userId.substring(0, 8);
             print('??? User name for label: $selectedByUserName');
           }
 
@@ -391,11 +564,12 @@ class _PageCanvasViewState extends State<PageCanvasView> {
       // Get the user name for the selection label
       String? selectedByUserName;
       if (hasOtherUserSelection) {
-            final userId = selectedByOthers.first.key;
-            // Get userName from otherUsersNames map (sent with selection event)
-            selectedByUserName = state.otherUsersNames[userId] ?? userId.substring(0, 8);
-            print('??? User name for label: $selectedByUserName');
-          }
+        final userId = selectedByOthers.first.key;
+        // Get userName from otherUsersNames map (sent with selection event)
+        selectedByUserName =
+            state.otherUsersNames[userId] ?? userId.substring(0, 8);
+        print('??? User name for label: $selectedByUserName');
+      }
 
       return SizedBox(
         width: widget.size.width,

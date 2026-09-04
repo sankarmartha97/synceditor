@@ -1,4 +1,4 @@
-const { pool } = require('../config/database');
+﻿const { pool } = require('../config/database');
 const { redis } = require('../config/redis');
 const { CLIENT_EVENTS, SERVER_EVENTS } = require('./events');
 const patchService = require('../services/patch.service');
@@ -57,7 +57,7 @@ const setupPageHandlers = (io, socket) => {
   socket.on(CLIENT_EVENTS.PAGE_JOIN, async (data) => {
     try {
       const { pageId } = data;
-      console.log(`📄 User ${socket.userId} requesting to join page ${pageId}`);
+      console.log(`ðŸ“„ User ${socket.userId} requesting to join page ${pageId}`);
 
       // Verify user has access to page
       const accessCheck = await pool.query(
@@ -155,9 +155,9 @@ const setupPageHandlers = (io, socket) => {
         timestamp: new Date().toISOString(),
       });
 
-      console.log(`✅ User ${socket.userId} joined page ${pageId} (${permission})`);
+      console.log(`âœ… User ${socket.userId} joined page ${pageId} (${permission})`);
     } catch (error) {
-      console.error('❌ Page join error:', error);
+      console.error('âŒ Page join error:', error);
       socket.emit(SERVER_EVENTS.SYNC_ERROR, {
         operation: 'page:join',
         message: 'Failed to join page',
@@ -176,7 +176,7 @@ const setupPageHandlers = (io, socket) => {
 
       if (!pageId) return;
 
-      console.log(`📤 User ${socket.userId} leaving page ${pageId}`);
+      console.log(`ðŸ“¤ User ${socket.userId} leaving page ${pageId}`);
 
       // Remove from database (or mark inactive)
       await pool.query(
@@ -201,9 +201,9 @@ const setupPageHandlers = (io, socket) => {
       socket.currentPageId = null;
       socket.pagePermission = null;
 
-      console.log(`✅ User ${socket.userId} left page ${pageId}`);
+      console.log(`âœ… User ${socket.userId} left page ${pageId}`);
     } catch (error) {
-      console.error('❌ Page leave error:', error);
+      console.error('âŒ Page leave error:', error);
     }
   });
 
@@ -215,7 +215,7 @@ const setupPageHandlers = (io, socket) => {
     try {
       const { pageId, patches, clientVersion } = data;
 
-      console.log(`🔄 User ${socket.userId} sending patch to page ${pageId}`);
+      console.log(`ðŸ”„ User ${socket.userId} sending patch to page ${pageId}`);
       console.log(`   Patches:`, patches.length, 'operations');
 
       // Verify permission (must have edit or owner)
@@ -248,7 +248,7 @@ const setupPageHandlers = (io, socket) => {
 
       // Check version conflict and transform if needed
       if (clientVersion && clientVersion !== serverVersion) {
-        console.log(`🔀 Version conflict detected: client=${clientVersion}, server=${serverVersion}`);
+        console.log(`ðŸ”€ Version conflict detected: client=${clientVersion}, server=${serverVersion}`);
         console.log(`   Applying Operational Transformation...`);
 
         // Get patches between client version and server version
@@ -269,10 +269,10 @@ const setupPageHandlers = (io, socket) => {
             serverVersion
           );
 
-          console.log(`   ✅ Transformed ${patches.length} → ${patchesToApply.length} operations`);
+          console.log(`   âœ… Transformed ${patches.length} â†’ ${patchesToApply.length} operations`);
 
           if (patchesToApply.length === 0) {
-            console.log(`   ⚠️ All operations cancelled by OT`);
+            console.log(`   âš ï¸ All operations cancelled by OT`);
             socket.emit(SERVER_EVENTS.PAGE_PATCH_APPLIED, {
               pageId,
               version: serverVersion,
@@ -284,7 +284,7 @@ const setupPageHandlers = (io, socket) => {
           }
         } else {
           // No patches found but versions differ - possible race condition
-          console.warn(`   ⚠️ No patches found between v${clientVersion} and v${serverVersion}`);
+          console.warn(`   âš ï¸ No patches found between v${clientVersion} and v${serverVersion}`);
           console.warn(`   Rejecting patch to maintain consistency`);
           socket.emit(SERVER_EVENTS.PAGE_CONFLICT, {
             clientVersion,
@@ -344,9 +344,9 @@ const setupPageHandlers = (io, socket) => {
         // Push to user's undo stack
         await operationHistoryService.pushToUndoStack(pageId, socket.userId, savedOp.id);
         
-        console.log(`💾 Operation saved for undo: ${savedOp.id}`);
+        console.log(`ðŸ’¾ Operation saved for undo: ${savedOp.id}`);
       } catch (historyError) {
-        console.error('❌ Failed to save operation history:', historyError);
+        console.error('âŒ Failed to save operation history:', historyError);
         // Don't fail the patch - undo just won't be available for this operation
       }
 
@@ -376,12 +376,12 @@ const setupPageHandlers = (io, socket) => {
         timestamp: new Date().toISOString(),
       });
 
-      console.log(`✅ Patch applied: page ${pageId} v${serverVersion} → v${newVersion}`);
+      console.log(`âœ… Patch applied: page ${pageId} v${serverVersion} â†’ v${newVersion}`);
       if (patchesToApply !== patches) {
-        console.log(`   🔀 Patches were transformed by OT`);
+        console.log(`   ðŸ”€ Patches were transformed by OT`);
       }
     } catch (error) {
-      console.error('❌ Page patch error:', error);
+      console.error('âŒ Page patch error:', error);
       socket.emit(SERVER_EVENTS.PAGE_PATCH_ERROR, {
         message: 'Failed to process patch',
         error: error.message,
@@ -427,7 +427,7 @@ const setupPageHandlers = (io, socket) => {
         timestamp: new Date().toISOString(),
       });
     } catch (error) {
-      console.error('❌ Cursor update error:', error);
+      console.error('âŒ Cursor update error:', error);
     }
   });
 
@@ -456,7 +456,7 @@ const setupPageHandlers = (io, socket) => {
         timestamp: new Date().toISOString(),
       });
     } catch (error) {
-      console.error('❌ Selection update error:', error);
+      console.error('âŒ Selection update error:', error);
     }
   });
 
@@ -487,7 +487,7 @@ const setupPageHandlers = (io, socket) => {
         return;
       }
 
-      console.log(`↩️ User ${socket.userId} requesting undo on page ${pageId}`);
+      console.log(`â†©ï¸ User ${socket.userId} requesting undo on page ${pageId}`);
 
       // Check if can undo
       const canUndo = await operationHistoryService.canUndo(pageId, socket.userId);
@@ -550,7 +550,7 @@ const setupPageHandlers = (io, socket) => {
       // Validate undo
       const validation = undoRedoService.validateUndo(transformedUndo, currentData);
       if (!validation.valid) {
-        console.warn(`⚠️ Undo validation failed: ${validation.error}`);
+        console.warn(`âš ï¸ Undo validation failed: ${validation.error}`);
         socket.emit(SERVER_EVENTS.PAGE_UNDO_ERROR, {
           message: validation.error,
         });
@@ -563,7 +563,7 @@ const setupPageHandlers = (io, socket) => {
       // Apply undo
       const result = undoRedoService.applyUndo(currentData, transformedUndo);
       if (!result.success) {
-        console.error(`❌ Undo application failed:`, result.errors);
+        console.error(`âŒ Undo application failed:`, result.errors);
         socket.emit(SERVER_EVENTS.PAGE_UNDO_ERROR, {
           message: 'Failed to apply undo',
           errors: result.errors,
@@ -622,9 +622,9 @@ const setupPageHandlers = (io, socket) => {
         timestamp: new Date().toISOString(),
       });
 
-      console.log(`✅ Undo applied: page ${pageId} v${currentVersion} → v${newVersion}`);
+      console.log(`âœ… Undo applied: page ${pageId} v${currentVersion} â†’ v${newVersion}`);
     } catch (error) {
-      console.error('❌ Undo error:', error);
+      console.error('âŒ Undo error:', error);
       socket.emit(SERVER_EVENTS.PAGE_UNDO_ERROR, {
         message: 'Failed to undo operation',
         error: error.message,
@@ -655,7 +655,7 @@ const setupPageHandlers = (io, socket) => {
         return;
       }
 
-      console.log(`↪️ User ${socket.userId} requesting redo on page ${pageId}`);
+      console.log(`â†ªï¸ User ${socket.userId} requesting redo on page ${pageId}`);
 
       // Check if can redo
       const canRedo = await operationHistoryService.canRedo(pageId, socket.userId);
@@ -719,7 +719,7 @@ const setupPageHandlers = (io, socket) => {
       // Apply redo
       const result = patchService.applyPatch(currentData, transformedRedo);
       if (!result.success) {
-        console.error(`❌ Redo application failed:`, result.errors);
+        console.error(`âŒ Redo application failed:`, result.errors);
         socket.emit(SERVER_EVENTS.PAGE_REDO_ERROR, {
           message: 'Failed to apply redo',
           errors: result.errors,
@@ -781,9 +781,9 @@ const setupPageHandlers = (io, socket) => {
         timestamp: new Date().toISOString(),
       });
 
-      console.log(`✅ Redo applied: page ${pageId} v${currentVersion} → v${newVersion}`);
+      console.log(`âœ… Redo applied: page ${pageId} v${currentVersion} â†’ v${newVersion}`);
     } catch (error) {
-      console.error('❌ Redo error:', error);
+      console.error('âŒ Redo error:', error);
       socket.emit(SERVER_EVENTS.PAGE_REDO_ERROR, {
         message: 'Failed to redo operation',
         error: error.message,
@@ -811,7 +811,7 @@ const setupPageHandlers = (io, socket) => {
         return;
       }
 
-      console.log(`💬 User ${socket.userId} creating comment on page ${pageId}`);
+      console.log(`ðŸ’¬ User ${socket.userId} creating comment on page ${pageId}`);
 
       // Create comment
       const comment = await commentsService.createComment({
@@ -864,9 +864,9 @@ const setupPageHandlers = (io, socket) => {
         });
       }
 
-      console.log(`✅ Comment created: ${comment.id}`);
+      console.log(`âœ… Comment created: ${comment.id}`);
     } catch (error) {
-      console.error('❌ Comment create error:', error);
+      console.error('âŒ Comment create error:', error);
       socket.emit(SERVER_EVENTS.SYNC_ERROR, {
         operation: 'comment:create',
         message: error.message || 'Failed to create comment',
@@ -881,7 +881,7 @@ const setupPageHandlers = (io, socket) => {
     try {
       const { commentId, content } = data;
 
-      console.log(`✏️ User ${socket.userId} updating comment ${commentId}`);
+      console.log(`âœï¸ User ${socket.userId} updating comment ${commentId}`);
 
       // Update comment
       const updatedComment = await commentsService.updateComment(
@@ -907,9 +907,9 @@ const setupPageHandlers = (io, socket) => {
         timestamp: new Date().toISOString(),
       });
 
-      console.log(`✅ Comment updated: ${commentId}`);
+      console.log(`âœ… Comment updated: ${commentId}`);
     } catch (error) {
-      console.error('❌ Comment update error:', error);
+      console.error('âŒ Comment update error:', error);
       socket.emit(SERVER_EVENTS.SYNC_ERROR, {
         operation: 'comment:update',
         message: error.message || 'Failed to update comment',
@@ -924,7 +924,7 @@ const setupPageHandlers = (io, socket) => {
     try {
       const { commentId, pageId } = data;
 
-      console.log(`🗑️ User ${socket.userId} deleting comment ${commentId}`);
+      console.log(`ðŸ—‘ï¸ User ${socket.userId} deleting comment ${commentId}`);
 
       // Delete comment
       await commentsService.deleteComment(commentId, socket.userId);
@@ -943,9 +943,9 @@ const setupPageHandlers = (io, socket) => {
         timestamp: new Date().toISOString(),
       });
 
-      console.log(`✅ Comment deleted: ${commentId}`);
+      console.log(`âœ… Comment deleted: ${commentId}`);
     } catch (error) {
-      console.error('❌ Comment delete error:', error);
+      console.error('âŒ Comment delete error:', error);
       socket.emit(SERVER_EVENTS.SYNC_ERROR, {
         operation: 'comment:delete',
         message: error.message || 'Failed to delete comment',
@@ -960,7 +960,7 @@ const setupPageHandlers = (io, socket) => {
     try {
       const { commentId, pageId, resolved = true } = data;
 
-      console.log(`${resolved ? '✅' : '🔓'} User ${socket.userId} ${resolved ? 'resolving' : 'reopening'} comment ${commentId}`);
+      console.log(`${resolved ? 'âœ…' : 'ðŸ”“'} User ${socket.userId} ${resolved ? 'resolving' : 'reopening'} comment ${commentId}`);
 
 
       const updatedComment = await commentsService.resolveComment(
@@ -1018,6 +1018,176 @@ const setupPageHandlers = (io, socket) => {
       } catch (error) {
         console.error('? Disconnect cleanup error:', error);
       }
+    }
+  });
+
+  // ============================================
+  // FOLLOW FEATURE - Figma-like user following
+  // ============================================
+  
+  /**
+   * Start following a user's viewport
+   */
+  socket.on(CLIENT_EVENTS.PAGE_FOLLOW_START, async (data) => {
+    try {
+      const { pageId, targetUserId } = data;
+
+      if (!socket.currentPageId || socket.currentPageId !== pageId) {
+        socket.emit(SERVER_EVENTS.PAGE_FOLLOW_ERROR, {
+          message: 'Not joined to this page',
+        });
+        return;
+      }
+
+      // Cannot follow yourself
+      if (targetUserId === socket.userId) {
+        socket.emit(SERVER_EVENTS.PAGE_FOLLOW_ERROR, {
+          message: 'Cannot follow yourself',
+        });
+        return;
+      }
+
+      // Check if target user is already following you (prevent mutual following)
+      const followsKey = `page:${pageId}:follows`;
+      const targetFollowing = await redis.hget(followsKey, targetUserId);
+      if (targetFollowing === socket.userId) {
+        // Get target user info for better error message
+        const userKey = `page:${pageId}:users`;
+        const targetUserStr = await redis.hget(userKey, targetUserId);
+        const targetUser = targetUserStr ? JSON.parse(targetUserStr) : null;
+        const targetName = targetUser ? targetUser.name : 'This user';
+        
+        socket.emit(SERVER_EVENTS.PAGE_FOLLOW_ERROR, {
+          message: `${targetName} is already following you. Mutual following is not allowed.`,
+        });
+        return;
+      }
+
+      console.log(`👁️ User ${socket.userId} starting to follow ${targetUserId} in page ${pageId}`);
+
+      // Check if target user is in the page
+      const userKey = `page:${pageId}:users`;
+      const targetUserStr = await redis.hget(userKey, targetUserId);
+      
+      if (!targetUserStr) {
+        socket.emit(SERVER_EVENTS.PAGE_FOLLOW_ERROR, {
+          message: 'Target user not in this page',
+        });
+        return;
+      }
+
+      const targetUser = JSON.parse(targetUserStr);
+
+      // Store follow relationship in Redis
+      const followKey = `page:${pageId}:follows`;
+      await redis.hset(followKey, socket.userId, targetUserId);
+      await redis.expire(followKey, 3600); // 1 hour TTL
+
+      // Get target user's current viewport if available
+      const viewportKey = `page:${pageId}:viewport:${targetUserId}`;
+      const viewportStr = await redis.get(viewportKey);
+      let initialViewport = null;
+      if (viewportStr) {
+        initialViewport = JSON.parse(viewportStr);
+      }
+
+      // Confirm to follower
+      socket.emit(SERVER_EVENTS.PAGE_FOLLOW_STARTED, {
+        pageId,
+        targetUserId,
+        targetUserName: targetUser.name,
+        initialViewport,
+        timestamp: new Date().toISOString(),
+      });
+
+      console.log(`✅ Follow started: ${socket.userId} → ${targetUserId}`);
+    } catch (error) {
+      console.error('❌ Follow start error:', error);
+      socket.emit(SERVER_EVENTS.PAGE_FOLLOW_ERROR, {
+        message: 'Failed to start following',
+        error: error.message,
+      });
+    }
+  });
+
+  /**
+   * Stop following a user
+   */
+  socket.on(CLIENT_EVENTS.PAGE_FOLLOW_STOP, async (data) => {
+    try {
+      const { pageId } = data;
+
+      if (!socket.currentPageId || socket.currentPageId !== pageId) {
+        return;
+      }
+
+      console.log(`👁️‍🗨️ User ${socket.userId} stopping follow in page ${pageId}`);
+
+      // Remove follow relationship
+      const followKey = `page:${pageId}:follows`;
+      await redis.hdel(followKey, socket.userId);
+
+      // Confirm to user
+      socket.emit(SERVER_EVENTS.PAGE_FOLLOW_STOPPED, {
+        pageId,
+        timestamp: new Date().toISOString(),
+      });
+
+      console.log(`✅ Follow stopped: ${socket.userId}`);
+    } catch (error) {
+      console.error('❌ Follow stop error:', error);
+    }
+  });
+
+  /**
+   * Viewport update - broadcast to followers
+   */
+  socket.on(CLIENT_EVENTS.PAGE_VIEWPORT_UPDATE, async (data) => {
+    try {
+      const { pageId, viewport } = data;
+
+      if (!socket.currentPageId || socket.currentPageId !== pageId) {
+        return;
+      }
+
+      // Store viewport in Redis with 30s TTL
+      const viewportKey = `page:${pageId}:viewport:${socket.userId}`;
+      await redis.setex(viewportKey, 30, JSON.stringify(viewport));
+
+      // Find who is following this user
+      const followKey = `page:${pageId}:follows`;
+      const allFollows = await redis.hgetall(followKey);
+      
+      const followers = Object.entries(allFollows)
+        .filter(([follower, target]) => target === socket.userId)
+        .map(([follower]) => follower);
+
+      if (followers.length === 0) {
+        return; // No one is following
+      }
+
+      // Get user info for broadcasting
+      const userKey = `page:${pageId}:users`;
+      const userDataStr = await redis.hget(userKey, socket.userId);
+      const userData = userDataStr ? JSON.parse(userDataStr) : null;
+
+      // Broadcast viewport update to followers only
+      followers.forEach((followerId) => {
+        // Find follower's socket and emit
+        const followerSockets = Array.from(io.sockets.sockets.values())
+          .filter(s => s.userId === followerId && s.currentPageId === pageId);
+        
+        followerSockets.forEach(followerSocket => {
+          followerSocket.emit(SERVER_EVENTS.PAGE_VIEWPORT_UPDATED, {
+            userId: socket.userId,
+            userName: userData?.name || 'Unknown',
+            viewport,
+            timestamp: new Date().toISOString(),
+          });
+        });
+      });
+    } catch (error) {
+      console.error('❌ Viewport update error:', error);
     }
   });
 };

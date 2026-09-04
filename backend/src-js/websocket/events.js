@@ -28,6 +28,11 @@ const CLIENT_EVENTS = {
   // Undo/Redo events
   PAGE_UNDO: 'page:undo',             // Request undo
   PAGE_REDO: 'page:redo',             // Request redo
+  
+  // Follow events
+  PAGE_FOLLOW_START: 'page:follow:start',   // Start following a user
+  PAGE_FOLLOW_STOP: 'page:follow:stop',     // Stop following
+  PAGE_VIEWPORT_UPDATE: 'page:viewport:update', // Send viewport position
 };
 
 // Server -> Client events
@@ -72,6 +77,12 @@ const SERVER_EVENTS = {
   PAGE_UNDO_ERROR: 'page:undo:error',           // Undo failed
   PAGE_REDO_ERROR: 'page:redo:error',           // Redo failed
   PAGE_UNDO_STATE: 'page:undo:state',           // Undo/redo availability state
+  
+  // Follow events
+  PAGE_FOLLOW_STARTED: 'page:follow:started',   // Follow started confirmation
+  PAGE_FOLLOW_STOPPED: 'page:follow:stopped',   // Follow stopped confirmation
+  PAGE_VIEWPORT_UPDATED: 'page:viewport:updated', // Viewport update from followed user
+  PAGE_FOLLOW_ERROR: 'page:follow:error',       // Follow operation failed
 };
 
 module.exports = { CLIENT_EVENTS, SERVER_EVENTS };

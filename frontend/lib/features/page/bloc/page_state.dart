@@ -43,6 +43,12 @@ class PageState extends Equatable {
   final bool isUndoing;
   final bool isRedoing;
 
+  // Follow feature state
+  final String? followingUserId; // User currently being followed
+  final String? followingUserName; // Name of user being followed
+  final bool isFollowing; // Currently in follow mode
+  final dynamic followedViewport; // ViewportData from followed user
+
   const PageState({
     this.pages = const [],
     this.pagesLoading = false,
@@ -63,6 +69,10 @@ class PageState extends Equatable {
     this.canRedo = false,
     this.isUndoing = false,
     this.isRedoing = false,
+    this.followingUserId,
+    this.followingUserName,
+    this.isFollowing = false,
+    this.followedViewport,
   });
 
   // Initial state
@@ -127,9 +137,14 @@ class PageState extends Equatable {
     bool? canRedo,
     bool? isUndoing,
     bool? isRedoing,
+    String? followingUserId,
+    String? followingUserName,
+    bool? isFollowing,
+    dynamic followedViewport,
     bool clearError = false,
     bool clearSelection = false,
     bool clearCurrentPage = false,
+    bool clearFollow = false,
   }) {
     return PageState(
       pages: pages ?? this.pages,
@@ -153,6 +168,16 @@ class PageState extends Equatable {
       canRedo: canRedo ?? this.canRedo,
       isUndoing: isUndoing ?? this.isUndoing,
       isRedoing: isRedoing ?? this.isRedoing,
+      followingUserId: clearFollow
+          ? null
+          : (followingUserId ?? this.followingUserId),
+      followingUserName: clearFollow
+          ? null
+          : (followingUserName ?? this.followingUserName),
+      isFollowing: clearFollow ? false : (isFollowing ?? this.isFollowing),
+      followedViewport: clearFollow
+          ? null
+          : (followedViewport ?? this.followedViewport),
     );
   }
 
@@ -177,5 +202,9 @@ class PageState extends Equatable {
     canRedo,
     isUndoing,
     isRedoing,
+    followingUserId,
+    followingUserName,
+    isFollowing,
+    followedViewport,
   ];
 }

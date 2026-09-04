@@ -86,6 +86,9 @@ class ActiveUsersList extends StatelessWidget {
   final String? currentUserId;
   final bool isCollapsed;
   final VoidCallback? onToggleCollapse;
+  final String? followingUserId; // Currently following this user
+  final Function(String userId, bool shouldFollow)?
+  onFollowUser; // Follow callback
 
   const ActiveUsersList({
     Key? key,
@@ -93,10 +96,17 @@ class ActiveUsersList extends StatelessWidget {
     this.currentUserId,
     this.isCollapsed = false,
     this.onToggleCollapse,
+    this.followingUserId,
+    this.onFollowUser,
   }) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
+    // Filter out current user from the list
+    final otherUsers = users
+        .where((user) => user.userId != currentUserId)
+        .toList();
+
     return Container(
       width: isCollapsed ? 60 : 250,
       decoration: BoxDecoration(
@@ -112,25 +122,23 @@ class ActiveUsersList extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _buildHeader(context),
+          _buildHeader(context, otherUsers),
           Expanded(
             child: isCollapsed
-                ? _buildCollapsedList()
-                : _buildExpandedList(context),
+                ? _buildCollapsedList(otherUsers)
+                : _buildExpandedList(context, otherUsers),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildHeader(BuildContext context) {
+  Widget _buildHeader(BuildContext context, List<ActiveUser> displayUsers) {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: Colors.grey[100],
-        border: Border(
-          bottom: BorderSide(color: Colors.grey[300]!),
-        ),
+        border: Border(bottom: BorderSide(color: Colors.grey[300]!)),
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -138,10 +146,7 @@ class ActiveUsersList extends StatelessWidget {
           if (!isCollapsed) ...[
             const Text(
               'Active Users',
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.bold,
-              ),
+              style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
             ),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
@@ -150,7 +155,7 @@ class ActiveUsersList extends StatelessWidget {
                 borderRadius: BorderRadius.circular(10),
               ),
               child: Text(
-                '${users.length}',
+                '${displayUsers.length}',
                 style: const TextStyle(
                   color: Colors.white,
                   fontSize: 12,
@@ -174,82 +179,67 @@ class ActiveUsersList extends StatelessWidget {
     );
   }
 
-  Widget _buildCollapsedList() {
+  Widget _buildCollapsedList(List<ActiveUser> displayUsers) {
     return ListView.builder(
       padding: const EdgeInsets.symmetric(vertical: 8),
-      itemCount: users.length,
+      itemCount: displayUsers.length,
       itemBuilder: (context, index) {
-        final user = users[index];
-        final isCurrentUser = user.userId == currentUserId;
+        final user = displayUsers[index];
 
         return Padding(
           padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
           child: Tooltip(
             message: '${user.name} (${user.permissionLabel})',
-            child: _buildAvatar(user, isCurrentUser, size: 40),
+            child: _buildAvatar(user, false, size: 40),
           ),
         );
       },
     );
   }
 
-  Widget _buildExpandedList(BuildContext context) {
+  Widget _buildExpandedList(
+    BuildContext context,
+    List<ActiveUser> displayUsers,
+  ) {
     return ListView.builder(
       padding: const EdgeInsets.symmetric(vertical: 4),
-      itemCount: users.length,
+      itemCount: displayUsers.length,
       itemBuilder: (context, index) {
-        final user = users[index];
-        final isCurrentUser = user.userId == currentUserId;
+        final user = displayUsers[index];
 
-        return _buildUserTile(context, user, isCurrentUser);
+        return _buildUserTile(context, user);
       },
     );
   }
 
-  Widget _buildUserTile(BuildContext context, ActiveUser user, bool isCurrentUser) {
+  Widget _buildUserTile(BuildContext context, ActiveUser user) {
+    final isFollowing = followingUserId == user.userId;
+
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
       padding: const EdgeInsets.all(8),
       decoration: BoxDecoration(
-        color: isCurrentUser ? Colors.blue.withOpacity(0.1) : null,
+        color: isFollowing ? Colors.orange.withOpacity(0.1) : null,
         borderRadius: BorderRadius.circular(8),
-        border: isCurrentUser
-            ? Border.all(color: Colors.blue.withOpacity(0.3))
+        border: isFollowing
+            ? Border.all(color: Colors.orange.withOpacity(0.5), width: 2)
             : null,
       ),
       child: Row(
         children: [
-          _buildAvatar(user, isCurrentUser),
+          _buildAvatar(user, false),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(
-                  children: [
-                    Flexible(
-                      child: Text(
-                        user.name,
-                        style: TextStyle(
-                          fontSize: 13,
-                          fontWeight:
-                              isCurrentUser ? FontWeight.bold : FontWeight.w500,
-                        ),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                    if (isCurrentUser) ...[
-                      const SizedBox(width: 4),
-                      const Text(
-                        '(You)',
-                        style: TextStyle(
-                          fontSize: 11,
-                          color: Colors.blue,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                    ],
-                  ],
+                Text(
+                  user.name,
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500,
+                  ),
+                  overflow: TextOverflow.ellipsis,
                 ),
                 const SizedBox(height: 2),
                 Row(
@@ -262,17 +252,17 @@ class ActiveUsersList extends StatelessWidget {
                     const SizedBox(width: 4),
                     Text(
                       user.permissionLabel,
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: Colors.grey[600],
-                      ),
+                      style: TextStyle(fontSize: 11, color: Colors.grey[600]),
                     ),
                   ],
                 ),
               ],
             ),
           ),
+          // Follow button
+          if (onFollowUser != null) _buildFollowButton(user, isFollowing),
           // Color indicator
+          const SizedBox(width: 8),
           Container(
             width: 8,
             height: 8,
@@ -282,6 +272,32 @@ class ActiveUsersList extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildFollowButton(ActiveUser user, bool isFollowing) {
+    return Tooltip(
+      message: isFollowing
+          ? 'Stop following ${user.name}'
+          : 'Follow ${user.name}',
+      child: InkWell(
+        onTap: () => onFollowUser?.call(user.userId, !isFollowing),
+        borderRadius: BorderRadius.circular(16),
+        child: Container(
+          padding: const EdgeInsets.all(6),
+          decoration: BoxDecoration(
+            color: isFollowing
+                ? Colors.orange.withOpacity(0.2)
+                : Colors.grey.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Icon(
+            isFollowing ? Icons.visibility : Icons.visibility_outlined,
+            size: 18,
+            color: isFollowing ? Colors.orange : Colors.grey[600],
+          ),
+        ),
       ),
     );
   }
@@ -349,8 +365,12 @@ class ActiveUsersAvatars extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final visibleUsers = users.take(maxVisible).toList();
-    final remainingCount = users.length - maxVisible;
+    // Filter out current user from the list
+    final otherUsers = users
+        .where((user) => user.userId != currentUserId)
+        .toList();
+    final visibleUsers = otherUsers.take(maxVisible).toList();
+    final remainingCount = otherUsers.length - maxVisible;
 
     return Row(
       mainAxisSize: MainAxisSize.min,
@@ -358,7 +378,6 @@ class ActiveUsersAvatars extends StatelessWidget {
         ...visibleUsers.asMap().entries.map((entry) {
           final index = entry.key;
           final user = entry.value;
-          final isCurrentUser = user.userId == currentUserId;
 
           return Transform.translate(
             offset: Offset(-index * (avatarSize * 0.3), 0),

@@ -1,4 +1,4 @@
-import 'dart:async';
+﻿import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:uuid/uuid.dart';
@@ -37,6 +37,12 @@ class PageBloc extends Bloc<PageEvent, PageState> {
   StreamSubscription? _undoRedoStateSubscription;
   StreamSubscription? _undoErrorSubscription;
   StreamSubscription? _redoErrorSubscription;
+
+  // Follow feature subscriptions
+  StreamSubscription? _followStartedSubscription;
+  StreamSubscription? _followStoppedSubscription;
+  StreamSubscription? _viewportUpdatedSubscription;
+  StreamSubscription? _followErrorSubscription;
 
   Timer? _cursorThrottleTimer;
   final Duration _cursorThrottleDuration = const Duration(milliseconds: 100);
@@ -79,9 +85,19 @@ class PageBloc extends Bloc<PageEvent, PageState> {
     on<UndoFailed>(_onUndoFailed);
     on<RedoFailed>(_onRedoFailed);
 
-    // ✨ NEW: Nested widget handlers
+    // âœ¨ NEW: Nested widget handlers
     on<MoveWidgetToParent>(_onMoveWidgetToParent);
     on<RemoveWidgetWithChildren>(_onRemoveWidgetWithChildren);
+
+    // âœ¨ Follow feature handlers
+    on<StartFollowingUser>(_onStartFollowingUser);
+    on<StopFollowingUser>(_onStopFollowingUser);
+    on<FollowedUserViewportUpdated>(_onFollowedUserViewportUpdated);
+    on<FollowModeExitedByUser>(_onFollowModeExitedByUser);
+    on<SendViewportUpdate>(_onSendViewportUpdate);
+    on<FollowStarted>(_onFollowStarted);
+    on<FollowStopped>(_onFollowStopped);
+    on<FollowError>(_onFollowError);
 
     // Initialize WebSocket
     _wsClient.connect();
@@ -106,8 +122,8 @@ class PageBloc extends Bloc<PageEvent, PageState> {
 
     // Listen to page joined event to get initial active users list
     _pageJoinedSubscription = _wsClient.pageJoinedEvents.listen((event) {
-      print('📄 Joined page: ${event.pageId}');
-      print('👥 Active users received: ${event.activeUsers.length}');
+      print('ðŸ“„ Joined page: ${event.pageId}');
+      print('ðŸ‘¥ Active users received: ${event.activeUsers.length}');
 
       // Convert to List<Map<String, dynamic>> for UpdateActiveUsers
       final usersData = event.activeUsers
@@ -119,16 +135,55 @@ class PageBloc extends Bloc<PageEvent, PageState> {
 
     // Listen to user presence
     _userJoinedSubscription = _wsClient.userJoinedEvents.listen((event) {
-      print('👤 User joined: ${event.user?.name}');
-      // The page:joined event will update the full active users list
+      print('User joined: ${event.user?.name}');
+      // Add user to active users list
+      if (event.user != null) {
+        final currentUsers = state.activeUsers.map((u) => {
+          'userId': u.userId,
+          'name': u.name,
+          'email': u.email,
+          'avatarUrl': u.avatarUrl,
+          'permission': u.permission.toString().split('.').last,
+          'color': '#3B82F6',
+          'joinedAt': u.joinedAt?.toIso8601String() ?? DateTime.now().toIso8601String(),
+        }).toList();
+        
+        currentUsers.add({
+          'userId': event.user!.userId,
+          'name': event.user!.name,
+          'email': event.user!.email,
+          'avatarUrl': event.user!.avatarUrl,
+          'permission': event.user!.permission.toString().split('.').last,
+          'color': '#3B82F6',
+          'joinedAt': event.user!.joinedAt?.toIso8601String() ?? DateTime.now().toIso8601String(),
+        });
+        
+        add(UpdateActiveUsers(currentUsers));
+      }
     });
 
     _userLeftSubscription = _wsClient.userLeftEvents.listen((event) {
       final userId = event.userId;
       if (userId != null) {
-        print('👤 User left: $userId');
+        print('User left: $userId');
         // Remove cursor when user leaves
         _cursorManager.removeCursor(userId);
+        
+        // Remove from active users list
+        final updatedUsers = state.activeUsers
+            .where((u) => u.userId != userId)
+            .map((u) => {
+              'userId': u.userId,
+              'name': u.name,
+              'email': u.email,
+              'avatarUrl': u.avatarUrl,
+              'permission': u.permission.toString().split('.').last,
+              'color': '#3B82F6',
+              'joinedAt': u.joinedAt?.toIso8601String() ?? DateTime.now().toIso8601String(),
+            })
+            .toList();
+        
+        add(UpdateActiveUsers(updatedUsers));
       }
     });
 
@@ -162,6 +217,25 @@ class PageBloc extends Bloc<PageEvent, PageState> {
     _redoErrorSubscription = _wsClient.redoErrorEvents.listen((message) {
       add(RedoFailed(message));
     });
+
+    // Listen to follow events
+    _followStartedSubscription = _wsClient.followStartedEvents.listen((event) {
+      add(FollowStarted(event));
+    });
+
+    _followStoppedSubscription = _wsClient.followStoppedEvents.listen((event) {
+      add(FollowStopped(event));
+    });
+
+    _viewportUpdatedSubscription = _wsClient.viewportUpdatedEvents.listen((
+      event,
+    ) {
+      add(FollowedUserViewportUpdated(event));
+    });
+
+    _followErrorSubscription = _wsClient.followErrorEvents.listen((message) {
+      add(FollowError(message));
+    });
   }
 
   // ==================== WEBSOCKET EVENT HANDLERS ====================
@@ -177,7 +251,7 @@ class PageBloc extends Bloc<PageEvent, PageState> {
       return;
     }
 
-    print('🔄 Applying incoming patch from user ${patchEvent.userId}');
+    print('ðŸ”„ Applying incoming patch from user ${patchEvent.userId}');
 
     // Apply patch to current page data
     final patchedData = _patchService.applyPatch(
@@ -207,7 +281,7 @@ class PageBloc extends Bloc<PageEvent, PageState> {
   ) {
     final patchEvent = event.patchEvent as PagePatchAppliedEvent;
 
-    print('✅ Patch confirmed: version ${patchEvent.version}');
+    print('âœ… Patch confirmed: version ${patchEvent.version}');
 
     if (state.currentPage != null &&
         state.currentPage!.id == patchEvent.pageId) {
@@ -230,7 +304,7 @@ class PageBloc extends Bloc<PageEvent, PageState> {
     HandlePatchConflict event,
     Emitter<PageState> emit,
   ) {
-    print('🔀 Server resolving conflict with Operational Transformation...');
+    print('ðŸ”€ Server resolving conflict with Operational Transformation...');
     // Server will auto-resolve with OT
     // Just wait for transformed patch confirmation
     // No user action needed!
@@ -274,7 +348,7 @@ class PageBloc extends Bloc<PageEvent, PageState> {
           final colorString = cursorEvent.userColor!.replaceAll('#', '');
           userColor = Color(int.parse('FF$colorString', radix: 16));
         } catch (e) {
-          print('⚠️ Failed to parse color: ${cursorEvent.userColor}');
+          print('âš ï¸ Failed to parse color: ${cursorEvent.userColor}');
         }
       }
 
@@ -303,7 +377,7 @@ class PageBloc extends Bloc<PageEvent, PageState> {
       // Update cursor in BLoC-managed cursor manager
       _cursorManager.updateCursor(cursorData);
     } catch (e, stack) {
-      print('❌ Error updating remote cursor: $e');
+      print('âŒ Error updating remote cursor: $e');
       print(stack);
     }
 
@@ -344,10 +418,10 @@ class PageBloc extends Bloc<PageEvent, PageState> {
       );
 
       print(
-        '✨ Updated selection for user ${selectionEvent.userId} (${selectionEvent.userName}): ${selectionEvent.widgetId}',
+        'âœ¨ Updated selection for user ${selectionEvent.userId} (${selectionEvent.userName}): ${selectionEvent.widgetId}',
       );
     } catch (e, stack) {
-      print('❌ Error updating remote selection: $e');
+      print('âŒ Error updating remote selection: $e');
       print(stack);
     }
   }
@@ -365,11 +439,11 @@ class PageBloc extends Bloc<PageEvent, PageState> {
   void _onUndoRequested(UndoRequested event, Emitter<PageState> emit) {
     if (state.currentPage == null) return;
     if (!state.canUndo) {
-      print('⚠️ Cannot undo: nothing to undo');
+      print('âš ï¸ Cannot undo: nothing to undo');
       return;
     }
 
-    print('↩️ Requesting undo for page ${event.pageId}');
+    print('â†©ï¸ Requesting undo for page ${event.pageId}');
     emit(state.copyWith(isUndoing: true));
     _wsClient.sendUndo(pageId: event.pageId);
   }
@@ -377,11 +451,11 @@ class PageBloc extends Bloc<PageEvent, PageState> {
   void _onRedoRequested(RedoRequested event, Emitter<PageState> emit) {
     if (state.currentPage == null) return;
     if (!state.canRedo) {
-      print('⚠️ Cannot redo: nothing to redo');
+      print('âš ï¸ Cannot redo: nothing to redo');
       return;
     }
 
-    print('↪️ Requesting redo for page ${event.pageId}');
+    print('â†ªï¸ Requesting redo for page ${event.pageId}');
     emit(state.copyWith(isRedoing: true));
     _wsClient.sendRedo(pageId: event.pageId);
   }
@@ -395,7 +469,7 @@ class PageBloc extends Bloc<PageEvent, PageState> {
     }
 
     print(
-      '✅ Undo applied: ${undoEvent.operationDescription ?? "operation"} (v${undoEvent.version})',
+      'âœ… Undo applied: ${undoEvent.operationDescription ?? "operation"} (v${undoEvent.version})',
     );
 
     // Apply patches to current page data
@@ -438,7 +512,7 @@ class PageBloc extends Bloc<PageEvent, PageState> {
     }
 
     print(
-      '✅ Redo applied: ${redoEvent.operationDescription ?? "operation"} (v${redoEvent.version})',
+      'âœ… Redo applied: ${redoEvent.operationDescription ?? "operation"} (v${redoEvent.version})',
     );
 
     // Apply patches to current page data
@@ -477,20 +551,20 @@ class PageBloc extends Bloc<PageEvent, PageState> {
     Emitter<PageState> emit,
   ) {
     print(
-      '🔄 Undo/Redo state updated: canUndo=${event.canUndo}, canRedo=${event.canRedo}',
+      'ðŸ”„ Undo/Redo state updated: canUndo=${event.canUndo}, canRedo=${event.canRedo}',
     );
     emit(state.copyWith(canUndo: event.canUndo, canRedo: event.canRedo));
   }
 
   void _onUndoFailed(UndoFailed event, Emitter<PageState> emit) {
-    print('❌ Undo failed: ${event.message}');
+    print('âŒ Undo failed: ${event.message}');
     emit(
       state.copyWith(isUndoing: false, error: 'Undo failed: ${event.message}'),
     );
   }
 
   void _onRedoFailed(RedoFailed event, Emitter<PageState> emit) {
-    print('❌ Redo failed: ${event.message}');
+    print('âŒ Redo failed: ${event.message}');
     emit(
       state.copyWith(isRedoing: false, error: 'Redo failed: ${event.message}'),
     );
@@ -513,6 +587,10 @@ class PageBloc extends Bloc<PageEvent, PageState> {
     _undoRedoStateSubscription?.cancel();
     _undoErrorSubscription?.cancel();
     _redoErrorSubscription?.cancel();
+    _followStartedSubscription?.cancel();
+    _followStoppedSubscription?.cancel();
+    _viewportUpdatedSubscription?.cancel();
+    _followErrorSubscription?.cancel();
     _cursorManager.dispose();
     return super.close();
   }
@@ -600,7 +678,7 @@ class PageBloc extends Bloc<PageEvent, PageState> {
         metadata: event.metadata,
       );
 
-      // ✨ V2.1: Add default container to new pages
+      // âœ¨ V2.1: Add default container to new pages
       final defaultContainer = PageWidget(
         id: const Uuid().v4(),
         type: 'Container',
@@ -609,7 +687,7 @@ class PageBloc extends Bloc<PageEvent, PageState> {
         properties: {'color': '#2196F3', 'borderRadius': 8.0, 'opacity': 1.0},
         isContainer: true,
         zIndex: 0,
-        isDefaultContainer: true, // ✨ NEW: Mark as non-deletable
+        isDefaultContainer: true, // âœ¨ NEW: Mark as non-deletable
       );
 
       // Add the default container to the page
@@ -912,7 +990,7 @@ class PageBloc extends Bloc<PageEvent, PageState> {
   ) async {
     if (state.currentPage == null) return;
 
-    // ✨ NEW: Prevent deletion of default container
+    // âœ¨ NEW: Prevent deletion of default container
     final widgetToDelete = state.currentPage!.pageData.widgets.firstWhere(
       (w) => w.id == event.widgetId,
       orElse: () => PageWidget(
@@ -925,7 +1003,7 @@ class PageBloc extends Bloc<PageEvent, PageState> {
     );
 
     if (widgetToDelete.isDefaultContainer) {
-      print('⚠️ Cannot delete the default container');
+      print('âš ï¸ Cannot delete the default container');
       emit(state.copyWith(error: 'Cannot delete the default container'));
       return;
     }
@@ -985,7 +1063,7 @@ class PageBloc extends Bloc<PageEvent, PageState> {
       ),
     );
 
-    // ✨ Sync selection to other users
+    // âœ¨ Sync selection to other users
     if (state.currentPageId != null) {
       _wsClient.sendSelection(
         pageId: state.currentPageId!,
@@ -1113,9 +1191,9 @@ class PageBloc extends Bloc<PageEvent, PageState> {
     try {
       final widget = allWidgets.firstWhere((w) => w.id == event.widgetId);
 
-      // ✨ NEW: Prevent deletion of default container
+      // âœ¨ NEW: Prevent deletion of default container
       if (widget.isDefaultContainer) {
-        print('⚠️ Cannot delete the default container');
+        print('âš ï¸ Cannot delete the default container');
         emit(state.copyWith(error: 'Cannot delete the default container'));
         return;
       }
@@ -1186,7 +1264,154 @@ class PageBloc extends Bloc<PageEvent, PageState> {
       final patches = _patchService.generatePatch(oldData, updatedPageData);
       _sendPatchAndClearSync(state.currentPage!.id, patches, currentVersion);
     } catch (e) {
-      print('❌ Error removing widget: $e');
+      print('âŒ Error removing widget: $e');
     }
+  }
+
+  // ============================================
+  // FOLLOW FEATURE HANDLERS
+  // ============================================
+
+  /// Start following another user's viewport
+  Future<void> _onStartFollowingUser(
+    StartFollowingUser event,
+    Emitter<PageState> emit,
+  ) async {
+    try {
+      print('👁️ Starting to follow user ${event.targetUserId}');
+
+      // Send follow start to backend
+      _wsClient.startFollowing(event.pageId, event.targetUserId);
+
+      // State will be updated when FollowStarted event is received
+    } catch (e) {
+      print('❌ Error starting follow: $e');
+      emit(state.copyWith(error: 'Failed to start following user'));
+    }
+  }
+
+  /// Stop following user
+  Future<void> _onStopFollowingUser(
+    StopFollowingUser event,
+    Emitter<PageState> emit,
+  ) async {
+    try {
+      print('👁️‍🗨️ Stopping follow');
+
+      // Send follow stop to backend
+      _wsClient.stopFollowing(event.pageId);
+
+      // Clear follow state immediately
+      emit(state.copyWith(clearFollow: true));
+    } catch (e) {
+      print('❌ Error stopping follow: $e');
+    }
+  }
+
+  /// Handle viewport update from followed user
+  Future<void> _onFollowedUserViewportUpdated(
+    FollowedUserViewportUpdated event,
+    Emitter<PageState> emit,
+  ) async {
+    try {
+      if (!state.isFollowing) return;
+
+      final viewportEvent = event.viewportEvent;
+      final userId = viewportEvent.userId;
+
+      // Only process if we're following this user
+      if (userId == state.followingUserId) {
+        print(
+          '🔍 Viewport update from followed user: ${viewportEvent.userName}',
+        );
+
+        // Update viewport in state (UI will react to this)
+        emit(state.copyWith(followedViewport: viewportEvent.viewport));
+      }
+    } catch (e) {
+      print('❌ Error handling viewport update: $e');
+    }
+  }
+
+  /// User manually exited follow mode (by interacting)
+  Future<void> _onFollowModeExitedByUser(
+    FollowModeExitedByUser event,
+    Emitter<PageState> emit,
+  ) async {
+    try {
+      print('👁️‍🗨️ User exited follow mode manually');
+
+      // Stop following
+      _wsClient.stopFollowing(event.pageId);
+
+      // Clear follow state
+      emit(state.copyWith(clearFollow: true));
+    } catch (e) {
+      print('❌ Error exiting follow mode: $e');
+    }
+  }
+
+  /// Send viewport update to followers
+  Future<void> _onSendViewportUpdate(
+    SendViewportUpdate event,
+    Emitter<PageState> emit,
+  ) async {
+    try {
+      // Don't send viewport updates if we're following someone
+      if (state.isFollowing) return;
+
+      _wsClient.sendViewportUpdate(event.pageId, event.viewport);
+    } catch (e) {
+      print('❌ Error sending viewport update: $e');
+    }
+  }
+
+  /// Follow started confirmation from backend
+  Future<void> _onFollowStarted(
+    FollowStarted event,
+    Emitter<PageState> emit,
+  ) async {
+    try {
+      final followEvent = event.followEvent;
+      print('✅ Follow started: ${followEvent.targetUserName}');
+
+      // Update state to follow mode
+      emit(
+        state.copyWith(
+          isFollowing: true,
+          followingUserId: followEvent.targetUserId,
+          followingUserName: followEvent.targetUserName,
+          followedViewport: followEvent.initialViewport,
+        ),
+      );
+    } catch (e) {
+      print('❌ Error handling follow started: $e');
+      emit(state.copyWith(error: 'Failed to start following'));
+    }
+  }
+
+  /// Follow stopped confirmation from backend
+  Future<void> _onFollowStopped(
+    FollowStopped event,
+    Emitter<PageState> emit,
+  ) async {
+    try {
+      print('✅ Follow stopped');
+
+      // Clear follow state
+      emit(state.copyWith(clearFollow: true));
+    } catch (e) {
+      print('❌ Error handling follow stopped: $e');
+    }
+  }
+
+  /// Handle follow error from backend
+  Future<void> _onFollowError(
+    FollowError event,
+    Emitter<PageState> emit,
+  ) async {
+    print('❌ Follow error: ${event.message}');
+
+    emit(state.copyWith(error: event.message, clearFollow: true));
   }
 }

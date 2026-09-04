@@ -44,6 +44,15 @@ class PageWebSocketClient {
   final _undoErrorController = StreamController<String>.broadcast();
   final _redoErrorController = StreamController<String>.broadcast();
 
+  // Follow feature stream controllers
+  final _followStartedController =
+      StreamController<PageFollowStartedEvent>.broadcast();
+  final _followStoppedController =
+      StreamController<PageFollowStoppedEvent>.broadcast();
+  final _viewportUpdatedController =
+      StreamController<PageViewportUpdatedEvent>.broadcast();
+  final _followErrorController = StreamController<String>.broadcast();
+
   // Public streams
   Stream<PageConnectionState> get connectionState =>
       _connectionStateController.stream;
@@ -80,6 +89,15 @@ class PageWebSocketClient {
       _undoRedoStateController.stream;
   Stream<String> get undoErrorEvents => _undoErrorController.stream;
   Stream<String> get redoErrorEvents => _redoErrorController.stream;
+
+  // Follow feature streams
+  Stream<PageFollowStartedEvent> get followStartedEvents =>
+      _followStartedController.stream;
+  Stream<PageFollowStoppedEvent> get followStoppedEvents =>
+      _followStoppedController.stream;
+  Stream<PageViewportUpdatedEvent> get viewportUpdatedEvents =>
+      _viewportUpdatedController.stream;
+  Stream<String> get followErrorEvents => _followErrorController.stream;
 
   bool get isConnected => _socket?.connected ?? false;
   String? _currentPageId;
@@ -345,6 +363,47 @@ class PageWebSocketClient {
       print('❌ Redo error: ${data['message']}');
       _redoErrorController.add(data['message'] ?? 'Redo failed');
     });
+
+    // ==================== FOLLOW FEATURE EVENTS ====================
+
+    _socket!.on('page:follow:started', (data) {
+      print('👁️ Follow started: ${data['targetUserName']}');
+      _followStartedController.add(
+        PageFollowStartedEvent(
+          pageId: data['pageId'],
+          targetUserId: data['targetUserId'],
+          targetUserName: data['targetUserName'],
+          initialViewport: data['initialViewport'],
+          timestamp: DateTime.parse(data['timestamp']),
+        ),
+      );
+    });
+
+    _socket!.on('page:follow:stopped', (data) {
+      print('👁️‍🗨️ Follow stopped');
+      _followStoppedController.add(
+        PageFollowStoppedEvent(
+          pageId: data['pageId'],
+          timestamp: DateTime.parse(data['timestamp']),
+        ),
+      );
+    });
+
+    _socket!.on('page:viewport:updated', (data) {
+      _viewportUpdatedController.add(
+        PageViewportUpdatedEvent(
+          userId: data['userId'],
+          userName: data['userName'],
+          viewport: data['viewport'],
+          timestamp: DateTime.parse(data['timestamp']),
+        ),
+      );
+    });
+
+    _socket!.on('page:follow:error', (data) {
+      print('❌ Follow error: ${data['message']}');
+      _followErrorController.add(data['message'] ?? 'Follow failed');
+    });
   }
 
   // ==================== PUBLIC METHODS ====================
@@ -487,6 +546,43 @@ class PageWebSocketClient {
     _socket!.emit('page:redo', {'pageId': pageId});
   }
 
+  // ==================== FOLLOW FEATURE METHODS ====================
+
+  /// Start following a user's viewport
+  void startFollowing(String pageId, String targetUserId) {
+    if (_socket?.connected != true) {
+      print('⚠️ Cannot start following: Socket not connected');
+      return;
+    }
+
+    print('👁️ Starting to follow user: $targetUserId');
+    _socket!.emit('page:follow:start', {
+      'pageId': pageId,
+      'targetUserId': targetUserId,
+    });
+  }
+
+  /// Stop following user
+  void stopFollowing(String pageId) {
+    if (_socket?.connected != true) {
+      print('⚠️ Cannot stop following: Socket not connected');
+      return;
+    }
+
+    print('👁️‍🗨️ Stopping follow');
+    _socket!.emit('page:follow:stop', {'pageId': pageId});
+  }
+
+  /// Send viewport update to followers
+  void sendViewportUpdate(String pageId, dynamic viewport) {
+    if (_socket?.connected != true) return;
+
+    _socket!.emit('page:viewport:update', {
+      'pageId': pageId,
+      'viewport': viewport,
+    });
+  }
+
   /// Disconnect from server
   void disconnect() {
     if (_currentPageId != null) {
@@ -520,6 +616,10 @@ class PageWebSocketClient {
     _undoRedoStateController.close();
     _undoErrorController.close();
     _redoErrorController.close();
+    _followStartedController.close();
+    _followStoppedController.close();
+    _viewportUpdatedController.close();
+    _followErrorController.close();
   }
 
   PermissionType _parsePermission(String permission) {
@@ -808,4 +908,46 @@ class PageUndoRedoStateEvent {
   final bool canRedo;
 
   PageUndoRedoStateEvent({required this.canUndo, required this.canRedo});
+}
+
+// ==================== FOLLOW FEATURE EVENT CLASSES ====================
+
+/// Follow started event
+class PageFollowStartedEvent {
+  final String pageId;
+  final String targetUserId;
+  final String targetUserName;
+  final dynamic initialViewport;
+  final DateTime timestamp;
+
+  PageFollowStartedEvent({
+    required this.pageId,
+    required this.targetUserId,
+    required this.targetUserName,
+    this.initialViewport,
+    required this.timestamp,
+  });
+}
+
+/// Follow stopped event
+class PageFollowStoppedEvent {
+  final String pageId;
+  final DateTime timestamp;
+
+  PageFollowStoppedEvent({required this.pageId, required this.timestamp});
+}
+
+/// Viewport updated event (from followed user)
+class PageViewportUpdatedEvent {
+  final String userId;
+  final String userName;
+  final dynamic viewport;
+  final DateTime timestamp;
+
+  PageViewportUpdatedEvent({
+    required this.userId,
+    required this.userName,
+    required this.viewport,
+    required this.timestamp,
+  });
 }

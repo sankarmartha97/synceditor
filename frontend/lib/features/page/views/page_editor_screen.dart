@@ -421,8 +421,8 @@ class _PageEditorScreenState extends State<PageEditorScreen> {
             ),
             body: Row(
               children: [
-                // Widget Library Panel (if can edit)
-                if (canEdit)
+                // Widget Library Panel (if can edit AND not following)
+                if (canEdit && !state.isFollowing)
                   Container(
                     width: 250,
                     color: Colors.white,
@@ -481,6 +481,10 @@ class _PageEditorScreenState extends State<PageEditorScreen> {
                               transformationController:
                                   _canvasTransformationController,
                             ),
+                            // Follow mode banner
+                            if (state.isFollowing &&
+                                state.followingUserName != null)
+                              _buildFollowModeBanner(context, state),
                           ],
                         ),
                       );
@@ -496,16 +500,116 @@ class _PageEditorScreenState extends State<PageEditorScreen> {
                   ),
                 // Active Users List (sidebar)
                 if (_showActiveUsers)
-                  ActiveUsersList(
-                    users: state.activeUsers,
-                    currentUserId: null, // TODO: Get current user ID from auth
-                    isCollapsed: false,
-                    onToggleCollapse: () {
-                      setState(() {
-                        _showActiveUsers = !_showActiveUsers;
-                      });
+                  BlocBuilder<AuthBloc, AuthState>(
+                    builder: (context, authState) {
+                      final currentUserId = authState is AuthAuthenticated
+                          ? authState.user.id
+                          : null;
+
+                      return ActiveUsersList(
+                        users: state.activeUsers,
+                        currentUserId: currentUserId,
+                        isCollapsed: false,
+                        followingUserId: state.followingUserId,
+                        onFollowUser: (userId, shouldFollow) {
+                          if (shouldFollow) {
+                            context.read<PageBloc>().add(
+                              StartFollowingUser(
+                                pageId: page.id,
+                                targetUserId: userId,
+                              ),
+                            );
+                          } else {
+                            context.read<PageBloc>().add(
+                              StopFollowingUser(page.id),
+                            );
+                          }
+                        },
+                        onToggleCollapse: () {
+                          setState(() {
+                            _showActiveUsers = !_showActiveUsers;
+                          });
+                        },
+                      );
                     },
                   ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Follow mode banner widget
+  Widget _buildFollowModeBanner(BuildContext context, PageState state) {
+    return Positioned(
+      top: 16,
+      left: 0,
+      right: 0,
+      child: Center(
+        child: Material(
+          elevation: 4,
+          borderRadius: BorderRadius.circular(24),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+            decoration: BoxDecoration(
+              color: Colors.blue,
+              borderRadius: BorderRadius.circular(24),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.lock, color: Colors.white, size: 20),
+                const SizedBox(width: 12),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      'Following ${state.followingUserName}',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const Text(
+                      '🔒 View Only - No Editing',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w400,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(width: 16),
+                InkWell(
+                  onTap: () {
+                    context.read<PageBloc>().add(
+                      StopFollowingUser(state.currentPage!.id),
+                    );
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 6,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.3),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Text(
+                      'Stop',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 13,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ),
               ],
             ),
           ),

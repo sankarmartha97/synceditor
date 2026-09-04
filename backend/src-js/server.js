@@ -43,13 +43,14 @@ const startServer = async () => {
       console.warn('⚠️  Redis connection failed, continuing without cache');
     }
 
-    // Start HTTP server
-    httpServer.listen(config.port, () => {
+    // Start HTTP server on all network interfaces (0.0.0.0) to allow remote access
+    httpServer.listen(config.port, '0.0.0.0', () => {
       console.log('\n' + '='.repeat(50));
       console.log('🚀 Canvas Editor Backend Server');
       console.log('='.repeat(50));
       console.log(`📝 Environment: ${config.nodeEnv}`);
       console.log(`🌐 Server running on: http://localhost:${config.port}`);
+      console.log(`🌐 Server accessible at: http://0.0.0.0:${config.port}`);
       console.log(`📡 WebSocket ready on: ws://localhost:${config.port}`);
       console.log(`🔗 Health check: http://localhost:${config.port}/health`);
       console.log(`📚 API docs: http://localhost:${config.port}/api`);

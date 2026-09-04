@@ -335,3 +335,90 @@ class RemoveWidgetWithChildren extends PageEvent {
   @override
   List<Object?> get props => [widgetId, cascade];
 }
+
+// ==================== FOLLOW FEATURE EVENTS ====================
+
+/// Start following another user's viewport
+class StartFollowingUser extends PageEvent {
+  final String pageId;
+  final String targetUserId;
+
+  const StartFollowingUser({required this.pageId, required this.targetUserId});
+
+  @override
+  List<Object?> get props => [pageId, targetUserId];
+}
+
+/// Stop following user
+class StopFollowingUser extends PageEvent {
+  final String pageId;
+
+  const StopFollowingUser(this.pageId);
+
+  @override
+  List<Object?> get props => [pageId];
+}
+
+/// Followed user's viewport was updated
+class FollowedUserViewportUpdated extends PageEvent {
+  final dynamic
+  viewportEvent; // PageViewportUpdatedEvent from page_websocket_client
+
+  const FollowedUserViewportUpdated(this.viewportEvent);
+
+  @override
+  List<Object?> get props => [viewportEvent];
+}
+
+/// User manually exited follow mode (by interacting with canvas)
+class FollowModeExitedByUser extends PageEvent {
+  final String pageId;
+
+  const FollowModeExitedByUser(this.pageId);
+
+  @override
+  List<Object?> get props => [pageId];
+}
+
+/// Send viewport update to followers
+class SendViewportUpdate extends PageEvent {
+  final String pageId;
+  final dynamic viewport; // ViewportData
+
+  const SendViewportUpdate({required this.pageId, required this.viewport});
+
+  @override
+  List<Object?> get props => [pageId, viewport];
+}
+
+/// Follow started confirmation
+class FollowStarted extends PageEvent {
+  final dynamic
+  followEvent; // PageFollowStartedEvent from page_websocket_client
+
+  const FollowStarted(this.followEvent);
+
+  @override
+  List<Object?> get props => [followEvent];
+}
+
+/// Follow stopped confirmation
+class FollowStopped extends PageEvent {
+  final dynamic
+  followEvent; // PageFollowStoppedEvent from page_websocket_client
+
+  const FollowStopped(this.followEvent);
+
+  @override
+  List<Object?> get props => [followEvent];
+}
+
+/// Follow error
+class FollowError extends PageEvent {
+  final String message;
+
+  const FollowError(this.message);
+
+  @override
+  List<Object?> get props => [message];
+}
