@@ -1,7 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:hive_flutter/hive_flutter.dart';
 import 'core/api/api_client.dart';
 import 'core/services/page_service.dart';
+import 'core/storage/storage_service.dart';
+import 'core/storage/hive_adapters.dart';
+import 'core/models/user.dart';
+import 'core/models/page.dart';
+import 'core/models/position_mode.dart';
 import 'features/page/bloc/page_bloc.dart';
 import 'features/page/views/page_dashboard.dart';
 import 'features/auth/bloc/auth_bloc.dart';
@@ -9,8 +15,45 @@ import 'features/auth/bloc/auth_event.dart';
 import 'features/auth/bloc/auth_state.dart';
 import 'features/auth/views/login_screen.dart';
 
-void main() {
+void main() async {
+  // Ensure Flutter is initialized
+  WidgetsFlutterBinding.ensureInitialized();
+
+  // Initialize Hive
+  await _initializeHive();
+
   runApp(const SyncEditorApp());
+}
+
+/// Initialize Hive and register all type adapters
+Future<void> _initializeHive() async {
+  try {
+    // Initialize Hive for Flutter
+    await Hive.initFlutter();
+
+    // Register custom Flutter type adapters
+    Hive.registerAdapter(OffsetAdapter());
+    Hive.registerAdapter(SizeAdapter());
+    Hive.registerAdapter(DynamicMapAdapter());
+
+    // Register generated type adapters
+    Hive.registerAdapter(UserAdapter());
+    Hive.registerAdapter(AuthResponseAdapter());
+    Hive.registerAdapter(PermissionTypeAdapter());
+    Hive.registerAdapter(PageMetadataAdapter());
+    Hive.registerAdapter(PageWidgetAdapter());
+    Hive.registerAdapter(PageDataAdapter());
+    Hive.registerAdapter(PageModelAdapter());
+    Hive.registerAdapter(PositionModeAdapter());
+
+    // Initialize storage service (open all boxes)
+    await StorageService.instance.init();
+
+    print('✅ Hive initialized successfully');
+  } catch (e) {
+    print('❌ Failed to initialize Hive: $e');
+    rethrow;
+  }
 }
 
 class SyncEditorApp extends StatelessWidget {

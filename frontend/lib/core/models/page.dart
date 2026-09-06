@@ -1,19 +1,53 @@
 import 'package:flutter/material.dart';
+import 'package:hive/hive.dart';
 import 'position_mode.dart';
 
+part 'page.g.dart';
+
 /// Permission types for page sharing
-enum PermissionType { owner, edit, comment, view }
+@HiveType(typeId: 2)
+enum PermissionType {
+  @HiveField(0)
+  owner,
+
+  @HiveField(1)
+  edit,
+
+  @HiveField(2)
+  comment,
+
+  @HiveField(3)
+  view,
+}
 
 /// Page metadata
+@HiveType(typeId: 3)
 class PageMetadata {
+  @HiveField(0)
   final double width;
+
+  @HiveField(1)
   final double height;
+
+  @HiveField(2)
   final String backgroundColor;
+
+  @HiveField(3)
   final double gridSize;
+
+  @HiveField(4)
   final bool showGrid;
+
+  @HiveField(5)
   final bool snapToGrid;
+
+  @HiveField(6)
   final double zoom;
+
+  @HiveField(7)
   final String? createdAt;
+
+  @HiveField(8)
   final String? updatedAt;
 
   PageMetadata({
@@ -80,24 +114,52 @@ class PageMetadata {
 }
 
 /// Widget in a page
+@HiveType(typeId: 4)
 class PageWidget {
+  @HiveField(0)
   final String id;
+
+  @HiveField(1)
   final String type;
+
+  @HiveField(2)
   final Offset position;
+
+  @HiveField(3)
   final Size size;
+
+  @HiveField(4)
   final Map<String, dynamic> properties;
 
   // ✨ NEW: Nesting support fields
+  @HiveField(5)
   final String? parentId;
+
+  @HiveField(6)
   final List<String> childrenIds;
+
+  @HiveField(7)
   final bool isContainer;
+
+  @HiveField(8)
   final int zIndex;
+
+  @HiveField(9)
   final PositionMode positionMode;
+
+  @HiveField(10)
   final bool isDefaultContainer; // ✨ NEW: Mark the top-level default container
 
+  @HiveField(11)
   final String? createdAt;
+
+  @HiveField(12)
   final String? createdBy;
+
+  @HiveField(13)
   final String? updatedAt;
+
+  @HiveField(14)
   final String? updatedBy;
 
   PageWidget({
@@ -215,11 +277,21 @@ class PageWidget {
 }
 
 /// Page data (single JSON document)
+@HiveType(typeId: 5)
 class PageData {
+  @HiveField(0)
   final String pageId;
+
+  @HiveField(1)
   final String name;
+
+  @HiveField(2)
   final int version;
+
+  @HiveField(3)
   final PageMetadata metadata;
+
+  @HiveField(4)
   final List<PageWidget> widgets;
 
   PageData({
@@ -272,14 +344,30 @@ class PageData {
 }
 
 /// Complete page model
+@HiveType(typeId: 6)
 class PageModel {
+  @HiveField(0)
   final String id;
+
+  @HiveField(1)
   final String name;
+
+  @HiveField(2)
   final String ownerId;
+
+  @HiveField(3)
   final PageData pageData;
+
+  @HiveField(4)
   final int version;
+
+  @HiveField(5)
   final DateTime createdAt;
+
+  @HiveField(6)
   final DateTime updatedAt;
+
+  @HiveField(7)
   final DateTime? deletedAt;
 
   PageModel({

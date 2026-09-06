@@ -1,10 +1,11 @@
 import 'package:dio/dio.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import '../storage/storage_service.dart';
 import 'endpoints.dart';
 
 class ApiClient {
   late final Dio _dio;
   static ApiClient? _instance;
+  final StorageService _storage = StorageService.instance;
   String? _authToken;
 
   ApiClient._internal() {
@@ -38,12 +39,12 @@ class ApiClient {
         onError: (error, handler) async {
           print('❌ ${error.response?.statusCode} ${error.requestOptions.path}');
           print('   Error: ${error.message}');
-          
+
           // Handle 401 Unauthorized - token expired
           if (error.response?.statusCode == 401) {
             await _handleUnauthorized();
           }
-          
+
           return handler.next(error);
         },
       ),
@@ -60,10 +61,9 @@ class ApiClient {
 
   Future<void> _loadToken() async {
     try {
-      final prefs = await SharedPreferences.getInstance();
-      _authToken = prefs.getString('auth_token');
+      _authToken = _storage.getAuthToken();
       if (_authToken != null) {
-        print('🔑 Auth token loaded from storage');
+        print('🔑 Auth token loaded from Hive');
       }
     } catch (e) {
       print('⚠️ Failed to load auth token: $e');
@@ -73,9 +73,7 @@ class ApiClient {
   Future<void> setAuthToken(String token) async {
     _authToken = token;
     try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString('auth_token', token);
-      print('🔑 Auth token saved to storage');
+      await _storage.saveAuthToken(token);
     } catch (e) {
       print('⚠️ Failed to save auth token: $e');
     }
@@ -84,9 +82,7 @@ class ApiClient {
   Future<void> clearAuthToken() async {
     _authToken = null;
     try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.remove('auth_token');
-      print('🔑 Auth token cleared from storage');
+      await _storage.clearAuthToken();
     } catch (e) {
       print('⚠️ Failed to clear auth token: $e');
     }
@@ -205,27 +201,28 @@ class ApiClient {
           statusCode: 0,
           type: ApiExceptionType.timeout,
         );
-      
+
       case DioExceptionType.badResponse:
         final statusCode = error.response?.statusCode ?? 0;
-        final message = error.response?.data?['message'] ?? 
-                       error.response?.data?['error'] ?? 
-                       'Something went wrong';
-        
+        final message =
+            error.response?.data?['message'] ??
+            error.response?.data?['error'] ??
+            'Something went wrong';
+
         return ApiException(
           message: message,
           statusCode: statusCode,
           type: _getExceptionType(statusCode),
           data: error.response?.data,
         );
-      
+
       case DioExceptionType.cancel:
         return ApiException(
           message: 'Request cancelled',
           statusCode: 0,
           type: ApiExceptionType.cancel,
         );
-      
+
       default:
         return ApiException(
           message: error.message ?? 'Network error occurred',

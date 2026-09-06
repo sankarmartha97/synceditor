@@ -1,14 +1,14 @@
-import 'package:shared_preferences/shared_preferences.dart';
 import '../api/api_client.dart';
 import '../api/endpoints.dart';
 import '../api/websocket_client.dart';
 import '../models/user.dart';
+import '../storage/storage_service.dart';
 
 class AuthService {
   final ApiClient _apiClient = ApiClient.instance;
   final WebSocketClient _wsClient = WebSocketClient.instance;
+  final StorageService _storage = StorageService.instance;
 
-  static const String _userKey = 'current_user';
   User? _currentUser;
 
   User? get currentUser => _currentUser;
@@ -98,10 +98,10 @@ class AuthService {
   // Load saved auth data on app start
   Future<bool> loadSavedAuth() async {
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final userJson = prefs.getString(_userKey);
+      // Load user from Hive storage
+      final savedUser = _storage.getUser();
 
-      if (userJson == null || !_apiClient.isAuthenticated) {
+      if (savedUser == null || !_apiClient.isAuthenticated) {
         return false;
       }
 
@@ -142,8 +142,7 @@ class AuthService {
   // Save user to storage
   Future<void> _saveUser(User user) async {
     try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString(_userKey, user.toJson().toString());
+      await _storage.saveUser(user);
     } catch (e) {
       print('⚠️ Failed to save user: $e');
     }
@@ -155,8 +154,7 @@ class AuthService {
     await _apiClient.clearAuthToken();
 
     try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.remove(_userKey);
+      await _storage.clearAuthData();
     } catch (e) {
       print('⚠️ Failed to clear user data: $e');
     }

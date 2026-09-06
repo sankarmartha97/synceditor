@@ -1,10 +1,23 @@
 import 'package:equatable/equatable.dart';
+import 'package:hive/hive.dart';
 
+part 'user.g.dart';
+
+@HiveType(typeId: 0)
 class User extends Equatable {
+  @HiveField(0)
   final String id;
+
+  @HiveField(1)
   final String email;
+
+  @HiveField(2)
   final String name;
+
+  @HiveField(3)
   final DateTime createdAt;
+
+  @HiveField(4)
   final DateTime? updatedAt;
 
   const User({
@@ -64,8 +77,12 @@ class User extends Equatable {
 }
 
 // Auth response model
+@HiveType(typeId: 1)
 class AuthResponse {
+  @HiveField(0)
   final String token;
+
+  @HiveField(1)
   final User user;
 
   const AuthResponse({required this.token, required this.user});

@@ -216,6 +216,9 @@ class _PageCanvasViewState extends State<PageCanvasView>
                     boundaryMargin: const EdgeInsets.all(double.infinity),
                     minScale: 0.1,
                     maxScale: 5.0,
+                    panEnabled: true,
+                    scaleEnabled: true,
+                    constrained: false,
                     child: Container(
                       width: metadata.width,
                       height: metadata.height,

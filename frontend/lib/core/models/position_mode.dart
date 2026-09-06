@@ -1,12 +1,20 @@
+import 'package:hive/hive.dart';
+
+part 'position_mode.g.dart';
+
 /// Position mode for widgets in the canvas
+@HiveType(typeId: 7)
 enum PositionMode {
   /// Position relative to canvas (absolute coordinates)
+  @HiveField(0)
   absolute,
-  
+
   /// Position relative to parent widget
+  @HiveField(1)
   relative,
-  
+
   /// Fixed position (doesn't move with parent)
+  @HiveField(2)
   fixed,
 }
 
