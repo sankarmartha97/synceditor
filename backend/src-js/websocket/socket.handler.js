@@ -29,7 +29,12 @@ const setupSocketHandlers = (io) => {
   // Connection handler
   io.on('connection', (socket) => {
     console.log(`🔌 User connected: ${socket.userId} (${socket.id})`);
-    
+
+    // Per-user room, independent of any page: lets any instance target this
+    // user's socket(s) directly (e.g. comment mentions) via the Redis adapter,
+    // instead of scanning io.sockets.sockets which only sees local sockets.
+    socket.join(`user:${socket.userId}`);
+
     // ============================================
     // SETUP PAGE HANDLERS (New)
     // ============================================

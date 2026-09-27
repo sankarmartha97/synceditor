@@ -136,18 +136,36 @@ class PageBloc extends Bloc<PageEvent, PageState> {
     // Listen to user presence
     _userJoinedSubscription = _wsClient.userJoinedEvents.listen((event) {
       print('User joined: ${event.user?.name}');
-      // Add user to active users list
+      // Add user to active users list (if not already present)
       if (event.user != null) {
-        final currentUsers = state.activeUsers.map((u) => {
-          'userId': u.userId,
-          'name': u.name,
-          'email': u.email,
-          'avatarUrl': u.avatarUrl,
-          'permission': u.permission.toString().split('.').last,
-          'color': '#3B82F6',
-          'joinedAt': u.joinedAt?.toIso8601String() ?? DateTime.now().toIso8601String(),
-        }).toList();
-        
+        // Check if user already exists in the list
+        final userExists = state.activeUsers.any(
+          (u) => u.userId == event.user!.userId,
+        );
+
+        if (userExists) {
+          print(
+            '⚠️  User ${event.user!.name} already in active users list, skipping',
+          );
+          return;
+        }
+
+        final currentUsers = state.activeUsers
+            .map(
+              (u) => {
+                'userId': u.userId,
+                'name': u.name,
+                'email': u.email,
+                'avatarUrl': u.avatarUrl,
+                'permission': u.permission.toString().split('.').last,
+                'color': '#3B82F6',
+                'joinedAt':
+                    u.joinedAt?.toIso8601String() ??
+                    DateTime.now().toIso8601String(),
+              },
+            )
+            .toList();
+
         currentUsers.add({
           'userId': event.user!.userId,
           'name': event.user!.name,
@@ -155,9 +173,11 @@ class PageBloc extends Bloc<PageEvent, PageState> {
           'avatarUrl': event.user!.avatarUrl,
           'permission': event.user!.permission.toString().split('.').last,
           'color': '#3B82F6',
-          'joinedAt': event.user!.joinedAt?.toIso8601String() ?? DateTime.now().toIso8601String(),
+          'joinedAt':
+              event.user!.joinedAt?.toIso8601String() ??
+              DateTime.now().toIso8601String(),
         });
-        
+
         add(UpdateActiveUsers(currentUsers));
       }
     });
@@ -168,21 +188,25 @@ class PageBloc extends Bloc<PageEvent, PageState> {
         print('User left: $userId');
         // Remove cursor when user leaves
         _cursorManager.removeCursor(userId);
-        
+
         // Remove from active users list
         final updatedUsers = state.activeUsers
             .where((u) => u.userId != userId)
-            .map((u) => {
-              'userId': u.userId,
-              'name': u.name,
-              'email': u.email,
-              'avatarUrl': u.avatarUrl,
-              'permission': u.permission.toString().split('.').last,
-              'color': '#3B82F6',
-              'joinedAt': u.joinedAt?.toIso8601String() ?? DateTime.now().toIso8601String(),
-            })
+            .map(
+              (u) => {
+                'userId': u.userId,
+                'name': u.name,
+                'email': u.email,
+                'avatarUrl': u.avatarUrl,
+                'permission': u.permission.toString().split('.').last,
+                'color': '#3B82F6',
+                'joinedAt':
+                    u.joinedAt?.toIso8601String() ??
+                    DateTime.now().toIso8601String(),
+              },
+            )
             .toList();
-        
+
         add(UpdateActiveUsers(updatedUsers));
       }
     });
@@ -607,12 +631,18 @@ class PageBloc extends Bloc<PageEvent, PageState> {
       clientVersion: clientVersion,
     );
 
-    // Backend doesn't send patch:applied confirmation yet
-    // Clear syncing after delay as workaround
+    // Fallback only: the real confirmation is page:patch:applied, handled by
+    // _onConfirmPatchApplied. If no ack arrives within a generous window,
+    // surface it as an error instead of silently pretending it saved.
     _syncTimeoutTimer?.cancel();
-    _syncTimeoutTimer = Timer(const Duration(milliseconds: 800), () {
+    _syncTimeoutTimer = Timer(const Duration(seconds: 8), () {
       if (!isClosed && state.isSyncing) {
-        emit(state.copyWith(isSyncing: false));
+        emit(
+          state.copyWith(
+            isSyncing: false,
+            error: 'Sync is taking longer than expected. Check your connection.',
+          ),
+        );
       }
     });
   }

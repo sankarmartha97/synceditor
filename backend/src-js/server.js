@@ -1,9 +1,10 @@
 ﻿const { createServer } = require('http');
 const { Server } = require('socket.io');
+const { createAdapter } = require('@socket.io/redis-adapter');
 const app = require('./app');
 const { config, validateEnv } = require('./config/env');
 const { testConnection, closePool } = require('./config/database');
-const { testRedisConnection, closeRedis } = require('./config/redis');
+const { redis, testRedisConnection, closeRedis } = require('./config/redis');
 const { setupSocketHandlers } = require('./websocket/socket.handler');
 
 // Validate environment variables
@@ -22,6 +23,15 @@ const io = new Server(httpServer, {
   pingTimeout: 60000,
   pingInterval: 25000,
 });
+
+// Redis adapter: without this, events like mentions and followed-viewport
+// updates only reach sockets connected to THIS process. With it, io.to(room)
+// correctly fans out across every backend instance sharing this Redis.
+const pubClient = redis.duplicate();
+const subClient = redis.duplicate();
+pubClient.on('error', (err) => console.error('❌ Redis adapter pub client error:', err));
+subClient.on('error', (err) => console.error('❌ Redis adapter sub client error:', err));
+io.adapter(createAdapter(pubClient, subClient));
 
 // Setup Socket.io handlers
 setupSocketHandlers(io);

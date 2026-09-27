@@ -92,8 +92,11 @@ const setupPageHandlers = (io, socket) => {
         ? 'owner' 
         : pageInfo.permission_type;
 
-      // Join page room
+      // Join page room, plus a per-(page,user) room so other instances can
+      // target this user's sockets on this specific page via the Redis
+      // adapter (used by follow/viewport, which only cares about this page).
       socket.join(`page:${pageId}`);
+      socket.join(`page:${pageId}:user:${socket.userId}`);
       socket.currentPageId = pageId;
       socket.pagePermission = permission;
 
@@ -191,6 +194,7 @@ const setupPageHandlers = (io, socket) => {
 
       // Leave room
       socket.leave(`page:${pageId}`);
+      socket.leave(`page:${pageId}:user:${socket.userId}`);
 
       // Notify others
       socket.to(`page:${pageId}`).emit(SERVER_EVENTS.PAGE_USER_LEFT, {
@@ -479,6 +483,14 @@ const setupPageHandlers = (io, socket) => {
         return;
       }
 
+      // Rate limit: prevent undo/redo spam
+      if (!checkRateLimit(socket.userId, 'undo')) {
+        socket.emit(SERVER_EVENTS.PAGE_UNDO_ERROR, {
+          message: 'Too many undo requests — please slow down',
+        });
+        return;
+      }
+
       // Verify permission
       if (!['owner', 'edit'].includes(socket.pagePermission)) {
         socket.emit(SERVER_EVENTS.PAGE_UNDO_ERROR, {
@@ -643,6 +655,14 @@ const setupPageHandlers = (io, socket) => {
       if (!socket.currentPageId || socket.currentPageId !== pageId) {
         socket.emit(SERVER_EVENTS.PAGE_REDO_ERROR, {
           message: 'Not joined to this page',
+        });
+        return;
+      }
+
+      // Rate limit: prevent undo/redo spam
+      if (!checkRateLimit(socket.userId, 'redo')) {
+        socket.emit(SERVER_EVENTS.PAGE_REDO_ERROR, {
+          message: 'Too many redo requests — please slow down',
         });
         return;
       }
@@ -843,22 +863,18 @@ const setupPageHandlers = (io, socket) => {
       if (mentions.length > 0) {
         const mentionedUserIds = await commentsService.resolveMentions(mentions);
         
-        // Emit mention event to each mentioned user (if they're online)
+        // Emit mention event to each mentioned user (if they're online) --
+        // via their per-user room, so this reaches them through the Redis
+        // adapter regardless of which backend instance they're connected to.
         mentionedUserIds.forEach((mentionedUserId) => {
           if (mentionedUserId !== socket.userId) {
-            // Send to specific user across all their sockets
-            const userSockets = Array.from(io.sockets.sockets.values())
-              .filter(s => s.userId === mentionedUserId);
-            
-            userSockets.forEach(userSocket => {
-              userSocket.emit(SERVER_EVENTS.COMMENT_MENTION, {
-                comment,
-                mentionedBy: {
-                  userId: socket.userId,
-                  userName: comment.user_name,
-                },
-                timestamp: new Date().toISOString(),
-              });
+            io.to(`user:${mentionedUserId}`).emit(SERVER_EVENTS.COMMENT_MENTION, {
+              comment,
+              mentionedBy: {
+                userId: socket.userId,
+                userName: comment.user_name,
+              },
+              timestamp: new Date().toISOString(),
             });
           }
         });
@@ -1171,19 +1187,15 @@ const setupPageHandlers = (io, socket) => {
       const userDataStr = await redis.hget(userKey, socket.userId);
       const userData = userDataStr ? JSON.parse(userDataStr) : null;
 
-      // Broadcast viewport update to followers only
+      // Broadcast viewport update to followers only, via each follower's
+      // per-(page,user) room -- correct across backend instances through the
+      // Redis adapter, and still scoped to followers who are on this page.
       followers.forEach((followerId) => {
-        // Find follower's socket and emit
-        const followerSockets = Array.from(io.sockets.sockets.values())
-          .filter(s => s.userId === followerId && s.currentPageId === pageId);
-        
-        followerSockets.forEach(followerSocket => {
-          followerSocket.emit(SERVER_EVENTS.PAGE_VIEWPORT_UPDATED, {
-            userId: socket.userId,
-            userName: userData?.name || 'Unknown',
-            viewport,
-            timestamp: new Date().toISOString(),
-          });
+        io.to(`page:${pageId}:user:${followerId}`).emit(SERVER_EVENTS.PAGE_VIEWPORT_UPDATED, {
+          userId: socket.userId,
+          userName: userData?.name || 'Unknown',
+          viewport,
+          timestamp: new Date().toISOString(),
         });
       });
     } catch (error) {

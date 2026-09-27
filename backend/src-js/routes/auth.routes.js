@@ -1,4 +1,5 @@
 const { Router } = require('express');
+const rateLimit = require('express-rate-limit');
 const {
   register,
   login,
@@ -14,19 +15,31 @@ const {
 
 const router = Router();
 
+// Brute-force protection: 10 attempts per 15 minutes per IP
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    success: false,
+    message: 'Too many attempts, please try again later.',
+  },
+});
+
 /**
  * @route   POST /api/auth/register
  * @desc    Register a new user
  * @access  Public
  */
-router.post('/register', validateRequest(registerSchema), register);
+router.post('/register', authLimiter, validateRequest(registerSchema), register);
 
 /**
  * @route   POST /api/auth/login
  * @desc    Login user
  * @access  Public
  */
-router.post('/login', validateRequest(loginSchema), login);
+router.post('/login', authLimiter, validateRequest(loginSchema), login);
 
 /**
  * @route   GET /api/auth/me
