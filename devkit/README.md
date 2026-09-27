@@ -22,8 +22,9 @@ All documentation is organized in numbered folders representing the chronologica
 | 10 | [SYNC_FEATURES](./10-SYNC_FEATURES/) | Real-time sync features | 2 files |
 | 11 | [CURSOR_POSITION_FIX](./11-CURSOR_POSITION_FIX/) | Cursor sync bug fix | 1 file |
 | 12 | [FOLLOW_FEATURE](./12-FOLLOW_FEATURE/) | User follow feature (planned) | 4 files |
+| 13 | [SCALING_AND_COLLABORATION](./13-SCALING_AND_COLLABORATION/) | Widget normalization, lock-free collaboration, Projects layer (planned) | 2 files |
 
-**Total:** 77 documentation files
+**Total:** 79 documentation files
 
 ---
 
@@ -160,6 +161,11 @@ This file establishes mandatory rules for:
 - API_SPECIFICATION.md
 - IMPLEMENTATION_CHECKLIST.md
 
+### 13-SCALING_AND_COLLABORATION
+**Purpose:** Scaling and multi-user collaboration plan (planned)
+- README.md
+- IMPLEMENTATION_CHECKLIST.md
+
 ---
 
 ## 🎯 Development Timeline
@@ -187,7 +193,9 @@ Sync Features (10)
     ↓
 Cursor Fix (11)
     ↓
-Follow Feature (12) ← Current/Next
+Follow Feature (12)
+    ↓
+Scaling & Collaboration (13) ← Current/Next
 ```
 
 ---
@@ -200,16 +208,17 @@ Follow Feature (12) ← Current/Next
 - **Real-time Sync**: Folder 10
 - **Cursor Positioning**: Folder 11
 - **Follow Feature**: Folder 12
+- **Scaling & Collaboration**: Folder 13
 
 ### By Phase
 - **Setup & Planning**: Folders 01-03
 - **Core Features**: Folders 05-08
 - **Refinements**: Folders 09-10
 - **Bug Fixes**: Folder 11
-- **New Features**: Folder 12
+- **New Features**: Folder 12, 13
 
 ### By Type
-- **Planning Docs**: Folders 01, 06, 12
+- **Planning Docs**: Folders 01, 06, 12, 13
 - **Implementation Docs**: Folders 05-08
 - **Testing Docs**: Folders 04, 09
 - **Setup Guides**: Folders 02, 03
@@ -248,9 +257,9 @@ All documentation in this folder follows these standards:
 
 ## 📊 Statistics
 
-- **Total Folders**: 12
-- **Total Documents**: ~77 files
-- **Major Features**: 8 (Undo/Redo, Nested Widgets, Sync, Follow, etc.)
+- **Total Folders**: 13
+- **Total Documents**: ~79 files
+- **Major Features**: 9 (Undo/Redo, Nested Widgets, Sync, Follow, Scaling & Collaboration, etc.)
 - **Development Phases**: 3 major phases
 - **Version Iterations**: 17 iterations on V2 nested widgets
 
@@ -265,6 +274,6 @@ All documentation in this folder follows these standards:
 
 ---
 
-**Last Updated:** September 1, 2026  
+**Last Updated:** September 27, 2026  
 **Maintained By:** Development Team  
 **Status:** Active Development

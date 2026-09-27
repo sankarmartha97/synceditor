@@ -1,0 +1,785 @@
+<title>SyncEditor Field Guide</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+  :root{
+    --bg:#EFF2F8;
+    --surface:#FFFFFF;
+    --surface-2:#E7ECF6;
+    --border:#D6DDEB;
+    --ink:#12172A;
+    --ink-muted:#5B6478;
+    --accent-alice:#2F6FED;
+    --accent-bob:#E08A2E;
+    --accent-server:#69728A;
+    --pg:#336791;
+    --redis:#C23324;
+    --warn:#B8860B;
+    --warn-bg:#FBF3DC;
+    --focus:#2F6FED;
+    --dur:600ms;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg:#0A0E1A;
+      --surface:#111729;
+      --surface-2:#1A2138;
+      --border:#28304A;
+      --ink:#E8ECF7;
+      --ink-muted:#8D97B4;
+      --pg:#6FA8D8;
+      --redis:#FF7A66;
+      --warn:#E8C468;
+      --warn-bg:#2B2510;
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#0A0E1A;
+    --surface:#111729;
+    --surface-2:#1A2138;
+    --border:#28304A;
+    --ink:#E8ECF7;
+    --ink-muted:#8D97B4;
+    --pg:#6FA8D8;
+    --redis:#FF7A66;
+    --warn:#E8C468;
+    --warn-bg:#2B2510;
+  }
+
+  *{box-sizing:border-box;}
+  body{background:var(--bg); color:var(--ink);}
+  .page{
+    max-width:1000px; margin:0 auto; padding:36px 20px 64px;
+    font-family:'IBM Plex Sans', system-ui, -apple-system, sans-serif;
+    display:flex; flex-direction:column; gap:40px;
+  }
+  code, .mono{font-family:'IBM Plex Mono', 'SFMono-Regular', Consolas, monospace;}
+  p{line-height:1.6;}
+
+  .head{display:flex; flex-direction:column; gap:10px; padding-bottom:24px; border-bottom:1px solid var(--border);}
+  .eyebrow{
+    margin:0; font-family:'IBM Plex Mono', monospace; font-size:12px; font-weight:600;
+    letter-spacing:.08em; text-transform:uppercase; color:var(--accent-alice);
+  }
+  h1{margin:0; font-size:clamp(26px,4vw,34px); font-weight:700; text-wrap:balance;}
+  .dek{margin:0; max-width:68ch; color:var(--ink-muted); font-size:15.5px; line-height:1.6;}
+
+  nav.toc{display:flex; flex-wrap:wrap; gap:8px 18px; margin-top:6px;}
+  nav.toc a{
+    font-size:13px; color:var(--ink-muted); text-decoration:none; font-weight:500;
+    border-bottom:1px dashed var(--border); padding-bottom:1px;
+  }
+  nav.toc a:hover{color:var(--accent-alice); border-color:var(--accent-alice);}
+
+  section{display:flex; flex-direction:column; gap:16px; scroll-margin-top:16px;}
+  .kicker{
+    margin:0; font-family:'IBM Plex Mono',monospace; font-size:11.5px; font-weight:600;
+    letter-spacing:.06em; text-transform:uppercase; color:var(--ink-muted);
+  }
+  h2{margin:0; font-size:21px; font-weight:700; text-wrap:balance;}
+  h3{margin:0 0 2px; font-size:15px; font-weight:600;}
+
+  .callout{
+    display:flex; gap:12px; background:var(--warn-bg); border:1px solid color-mix(in srgb, var(--warn) 45%, var(--border));
+    border-radius:10px; padding:14px 16px; font-size:14px; line-height:1.6;
+  }
+  .callout .mark{font-weight:700; color:var(--warn); flex:none; font-family:'IBM Plex Mono',monospace;}
+  .callout b{color:var(--ink);}
+
+  table{border-collapse:collapse; width:100%; font-size:13.5px;}
+  table.stack th, table.stack td{text-align:left; padding:9px 12px; border-bottom:1px solid var(--border);}
+  table.stack th{color:var(--ink-muted); font-weight:600; font-size:11.5px; text-transform:uppercase; letter-spacing:.04em;}
+  table.stack tr:nth-child(even) td{background:color-mix(in srgb, var(--surface-2) 55%, transparent);}
+  .stack-wrap{background:var(--surface); border:1px solid var(--border); border-radius:12px; overflow:auto;}
+  .stack-wrap table{margin:0;}
+
+  figure{margin:0; display:flex; flex-direction:column; gap:8px;}
+  figure svg{width:100%; height:auto; display:block;}
+  .sysmap-wrap{background:var(--surface); border:1px solid var(--border); border-radius:14px; padding:18px; overflow:auto;}
+  figcaption{font-size:12.5px; color:var(--ink-muted);}
+  .sysmap-wrap text{fill:var(--ink); font-family:'IBM Plex Sans',sans-serif;}
+  .sysmap-wrap .lbl{fill:var(--ink-muted); font-family:'IBM Plex Mono',monospace; font-size:10.5px;}
+  .sysmap-wrap .wire{stroke:var(--ink-muted); stroke-width:1.4; fill:none;}
+  .sysmap-wrap .box{fill:var(--surface-2); stroke:var(--border); stroke-width:1.2;}
+  .sysmap-wrap .box.pg{stroke:var(--pg);}
+  .sysmap-wrap .box.redis{stroke:var(--redis);}
+  .sysmap-wrap .box.client-a{stroke:var(--accent-alice);}
+  .sysmap-wrap .box.client-b{stroke:var(--accent-bob);}
+
+  ol.flow{margin:0; padding:0; list-style:none; display:flex; flex-direction:column; gap:14px;}
+  ol.flow li{
+    display:grid; grid-template-columns:28px 1fr; gap:12px;
+    background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:13px 16px;
+  }
+  ol.flow .idx{
+    font-family:'IBM Plex Mono',monospace; font-weight:600; font-size:13px; color:var(--accent-alice);
+    background:var(--surface-2); border-radius:50%; width:26px; height:26px; display:flex; align-items:center; justify-content:center;
+  }
+  ol.flow h3{margin-bottom:4px;}
+  ol.flow p{margin:0; color:var(--ink-muted); font-size:13.5px;}
+  ol.flow .events{margin-top:6px; display:flex; flex-wrap:wrap; gap:6px;}
+  ol.flow .events span{
+    font-family:'IBM Plex Mono',monospace; font-size:11px; background:var(--surface-2);
+    border:1px solid var(--border); border-radius:5px; padding:2px 7px; color:var(--ink);
+  }
+
+  .persist-grid{display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:14px;}
+  .persist-card{background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:15px 16px;}
+  .persist-card h3{display:flex; align-items:center; gap:8px;}
+  .persist-card h3 i{width:9px; height:9px; border-radius:50%; flex:none;}
+  .persist-card.pg h3 i{background:var(--pg);}
+  .persist-card.redis h3 i{background:var(--redis);}
+  .persist-card.hive h3 i{background:var(--accent-bob);}
+  .persist-card p{margin:0; color:var(--ink-muted); font-size:13.5px;}
+
+  /* ===== embedded interactive trace ===== */
+  .legend{display:flex; flex-wrap:wrap; gap:8px 14px; margin-top:2px;}
+  .tag{display:inline-flex; align-items:center; gap:6px; font-size:12.5px; color:var(--ink-muted); font-family:'IBM Plex Mono', monospace;}
+  .tag i{width:9px; height:9px; border-radius:50%; display:inline-block; flex:none;}
+  .tag[data-who="alice"] i{background:var(--accent-alice);}
+  .tag[data-who="bob"] i{background:var(--accent-bob);}
+  .tag[data-who="pg"] i{background:var(--pg);}
+  .tag[data-who="redis"] i{background:var(--redis);}
+
+  .stage-wrap{background:var(--surface); border:1px solid var(--border); border-radius:14px; padding:18px; box-shadow:0 1px 2px rgba(10,15,30,.04);}
+  .stage{position:relative; width:100%; aspect-ratio:2.35; min-height:230px;}
+  @media (max-width:560px){ .stage{aspect-ratio:1.35; min-height:280px;} }
+  .wires{position:absolute; inset:0; width:100%; height:100%; overflow:visible;}
+  .wire{stroke:var(--border); stroke-width:1.6; vector-effect:non-scaling-stroke;}
+  .node{position:absolute; transform:translate(-50%,-50%); display:flex; flex-direction:column; align-items:center; gap:5px; text-align:center;}
+  .node .label{font-size:12px; font-weight:600; color:var(--ink); line-height:1.2;}
+  .node .label small{font-weight:400; color:var(--ink-muted); font-size:10px; font-family:'IBM Plex Mono',monospace;}
+  .avatar{width:44px; height:44px; border-radius:50%; background:var(--c); color:#fff; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:16px; border:3px solid var(--surface); box-shadow:0 0 0 1px var(--border);}
+  .node.server .box{width:64px; height:44px; border-radius:10px; background:var(--surface-2); border:1px solid var(--border); color:var(--accent-server); display:flex; align-items:center; justify-content:center;}
+  .node.server .box svg{width:24px; height:24px;}
+  .node.db .icon{width:46px; height:36px; border-radius:9px; background:var(--surface-2); border:1px solid var(--border); display:flex; align-items:center; justify-content:center;}
+  .node.db .icon svg{width:22px; height:22px;}
+  #node-postgres .icon{color:var(--pg);}
+  #node-redis .icon{color:var(--redis);}
+  .node.db.active .icon{box-shadow:0 0 0 4px color-mix(in srgb, currentColor 22%, transparent); border-color:currentColor;}
+  .pulse-tag{position:absolute; top:-22px; left:50%; transform:translateX(-50%); font-family:'IBM Plex Mono',monospace; font-size:10px; font-weight:600; background:var(--surface); border:1px solid var(--border); border-radius:5px; padding:2px 6px; white-space:nowrap; opacity:0; transition:opacity .2s; pointer-events:none;}
+  .node.db.active .pulse-tag{opacity:1;}
+  .packet{position:absolute; width:14px; height:14px; border-radius:50%; border:2px solid var(--surface); z-index:5; opacity:0; transition:left var(--dur) cubic-bezier(.4,0,.2,1), top var(--dur) cubic-bezier(.4,0,.2,1), opacity .2s; box-shadow:0 1px 3px rgba(0,0,0,.25);}
+  .packet-label{position:absolute; left:50%; top:-8px; transform:translate(-50%,-100%); white-space:nowrap; font-family:'IBM Plex Mono',monospace; font-size:11px; font-weight:600; padding:2px 7px; border-radius:5px; background:var(--surface); border:1px solid var(--border);}
+  @media (prefers-reduced-motion: reduce){ .packet{transition:opacity .15s;} }
+
+  .transport{display:flex; align-items:center; gap:14px; flex-wrap:wrap; background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:10px 14px;}
+  .transport button{font-family:inherit; font-size:14px; font-weight:600; cursor:pointer; background:var(--surface-2); color:var(--ink); border:1px solid var(--border); border-radius:8px; padding:7px 12px; line-height:1;}
+  .transport button:hover{border-color:var(--accent-alice);}
+  .transport button:focus-visible{outline:2px solid var(--focus); outline-offset:2px;}
+  #btnPlay{min-width:44px;}
+  .counter{font-family:'IBM Plex Mono',monospace; font-variant-numeric:tabular-nums; color:var(--ink-muted); font-size:13px; margin-right:auto;}
+  .speeds{display:flex; gap:4px;}
+  .speeds button{padding:6px 9px; font-size:12px; background:transparent;}
+  .speeds button.active{background:var(--accent-alice); color:#fff; border-color:var(--accent-alice);}
+
+  .steps{list-style:none; margin:0; padding:0; display:flex; flex-wrap:wrap; gap:8px;}
+  .steps button{font-family:'IBM Plex Sans',sans-serif; font-size:12.5px; font-weight:500; background:var(--surface); color:var(--ink-muted); border:1px solid var(--border); border-radius:999px; padding:6px 12px; cursor:pointer; display:flex; align-items:center; gap:6px;}
+  .steps button:focus-visible{outline:2px solid var(--focus); outline-offset:2px;}
+  .steps button .n{font-family:'IBM Plex Mono',monospace; font-size:11px; font-weight:600; color:var(--ink-muted); background:var(--surface-2); border-radius:50%; width:16px; height:16px; display:flex; align-items:center; justify-content:center;}
+  .steps button.active{border-color:var(--accent-alice); color:var(--ink); background:color-mix(in srgb, var(--accent-alice) 10%, var(--surface));}
+  .steps button.active .n{background:var(--accent-alice); color:#fff;}
+
+  .log{background:var(--surface); border:1px solid var(--border); border-radius:12px; overflow:hidden;}
+  .log-head{display:flex; gap:12px; padding:9px 14px; font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:.05em; color:var(--ink-muted); background:var(--surface-2); border-bottom:1px solid var(--border);}
+  .log-head span:nth-child(1){width:20px;}
+  .log-head span:nth-child(2){width:112px;}
+  .log-head span:nth-child(3){width:170px;}
+  .log-head span:nth-child(4){width:230px;}
+  .log-body{max-height:320px; overflow-y:auto; overflow-x:auto;}
+  .row{display:flex; gap:12px; padding:8px 14px; font-size:12.5px; align-items:flex-start; border-top:1px solid var(--border);}
+  .row:first-child{border-top:none;}
+  .row.row-start{border-top:2px solid var(--border);}
+  .row:nth-child(odd){background:color-mix(in srgb, var(--surface-2) 45%, transparent);}
+  .row.flash{animation:flash 900ms ease-out;}
+  @keyframes flash{ from{background:color-mix(in srgb, var(--accent-alice) 16%, transparent);} }
+  .row .num{width:20px; flex:none; color:var(--ink-muted); font-family:'IBM Plex Mono',monospace; font-size:11px; padding-top:2px;}
+  .row .dir{width:112px; flex:none; display:flex; align-items:center; gap:5px; font-size:11.5px; color:var(--ink-muted); padding-top:2px;}
+  .row .dir i{width:7px; height:7px; border-radius:50%; flex:none;}
+  .row .event{width:170px; flex:none; font-weight:600; word-break:break-word;}
+  .row .payload{width:230px; flex:none; color:var(--ink-muted); word-break:break-word; font-variant-numeric:tabular-nums;}
+  .row .note{flex:1 1 200px; color:var(--ink-muted); min-width:160px;}
+  @media (max-width:640px){
+    .log-head{display:none;}
+    .row{flex-wrap:wrap;}
+    .row .dir, .row .event, .row .payload, .row .note{width:auto;}
+  }
+
+  .foot{margin:0; font-size:12px; color:var(--ink-muted); text-align:center; padding-top:16px; border-top:1px solid var(--border);}
+  .foot code{background:var(--surface-2); border:1px solid var(--border); border-radius:4px; padding:1px 5px;}
+</style>
+
+<div class="page">
+
+  <header class="head">
+    <p class="eyebrow">Onboarding reference &middot; generated 2026-09-07</p>
+    <h1>SyncEditor Field Guide</h1>
+    <p class="dek">A real-time collaborative page editor &mdash; Flutter frontend, Node.js backend, JSON-Patch sync with operational transformation. This is the one-file version: read it top to bottom, or jump to a section.</p>
+    <nav class="toc">
+      <a href="#overview">Overview</a>
+      <a href="#map">System map</a>
+      <a href="#lifecycle">Request lifecycle</a>
+      <a href="#persistence">Persistence</a>
+      <a href="#trace">Watch it happen</a>
+      <a href="#files">Where things live</a>
+    </nav>
+  </header>
+
+  <section id="overview">
+    <p class="kicker">01 &middot; Overview</p>
+    <h2>What this is</h2>
+    <p>SyncEditor is a Figma-style canvas editor where multiple people edit the same page at once: drag widgets, see each other's cursors, follow one another's viewport, comment with @mentions, and undo/redo &mdash; all synced live over WebSockets.</p>
+
+    <div class="stack-wrap">
+      <table class="stack">
+        <tr><th>Layer</th><th>Technology</th><th>Role</th></tr>
+        <tr><td>Frontend</td><td class="mono">Flutter + flutter_bloc</td><td>UI, state management (<code>PageBloc</code>), local cache</td></tr>
+        <tr><td>Realtime transport</td><td class="mono">Socket.IO</td><td>JSON-Patch sync, presence, follow, comments</td></tr>
+        <tr><td>REST API</td><td class="mono">Express + JWT</td><td>Auth, page CRUD, permissions</td></tr>
+        <tr><td>Source of truth</td><td class="mono">PostgreSQL</td><td><code>page_data</code> JSONB blob + version, users, permissions, history</td></tr>
+        <tr><td>Ephemeral state</td><td class="mono">Redis</td><td>Active users, cursors, follow relations, viewports (all TTL-based)</td></tr>
+        <tr><td>Local cache</td><td class="mono">Hive</td><td>Offline page cache, draft autosave, mutation queue</td></tr>
+      </table>
+    </div>
+
+    <div class="callout">
+      <span class="mark">NOTE</span>
+      <span>Both sides of this repo carry a second, unused implementation. Backend: <code>backend/src</code> (TypeScript) is a legacy scaffold &mdash; <code>package.json</code>'s <code>main</code>/<code>dev</code>/<code>start</code> scripts all point at <b><code>backend/src-js</code></b> (plain JS), which is what actually runs and has the full feature set (patches, OT, undo/redo, comments, follow mode). Frontend: <code>features/canvas/*</code> is an older widget-based editor that <code>main.dart</code> never wires up &mdash; the live path is entirely <b><code>features/page/*</code></b>. Everything below describes the live path only.</span>
+    </div>
+  </section>
+
+  <section id="map">
+    <p class="kicker">02 &middot; System map</p>
+    <h2>Who talks to whom</h2>
+    <figure>
+      <div class="sysmap-wrap">
+        <svg viewBox="0 0 900 260" role="img" aria-label="Two Flutter clients connect over REST and WebSocket to a Node.js and Socket.IO server, which reads and writes PostgreSQL as the source of truth and Redis for ephemeral presence state.">
+          <defs>
+            <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path d="M0,0 L10,5 L0,10 z" fill="currentColor"></path>
+            </marker>
+          </defs>
+
+          <rect class="box client-a" x="20" y="30" width="150" height="56" rx="10"></rect>
+          <text x="95" y="54" text-anchor="middle" font-size="13" font-weight="600">Flutter client</text>
+          <text x="95" y="72" text-anchor="middle" class="lbl">Alice &middot; PageBloc</text>
+
+          <rect class="box client-b" x="20" y="176" width="150" height="56" rx="10"></rect>
+          <text x="95" y="200" text-anchor="middle" font-size="13" font-weight="600">Flutter client</text>
+          <text x="95" y="218" text-anchor="middle" class="lbl">Bob &middot; PageBloc</text>
+
+          <rect class="box" x="370" y="103" width="180" height="56" rx="10"></rect>
+          <text x="460" y="127" text-anchor="middle" font-size="13" font-weight="600">Node.js + Socket.IO</text>
+          <text x="460" y="145" text-anchor="middle" class="lbl">backend/src-js/server.js</text>
+
+          <rect class="box pg" x="660" y="30" width="200" height="56" rx="10"></rect>
+          <text x="760" y="54" text-anchor="middle" font-size="13" font-weight="600">PostgreSQL</text>
+          <text x="760" y="72" text-anchor="middle" class="lbl">pages, permissions, history</text>
+
+          <rect class="box redis" x="660" y="176" width="200" height="56" rx="10"></rect>
+          <text x="760" y="200" text-anchor="middle" font-size="13" font-weight="600">Redis</text>
+          <text x="760" y="218" text-anchor="middle" class="lbl">presence, cursors, follow (TTL)</text>
+
+          <path class="wire" d="M170,58 L370,120" marker-end="url(#arrow)" marker-start="url(#arrow)"></path>
+          <text x="255" y="80" class="lbl">REST + page:* WS</text>
+
+          <path class="wire" d="M170,204 L370,142" marker-end="url(#arrow)" marker-start="url(#arrow)"></path>
+          <text x="255" y="195" class="lbl">REST + page:* WS</text>
+
+          <path class="wire" d="M550,114 L660,58" marker-end="url(#arrow)" marker-start="url(#arrow)"></path>
+          <text x="612" y="72" class="lbl">reads / writes</text>
+
+          <path class="wire" d="M550,148 L660,204" marker-end="url(#arrow)" marker-start="url(#arrow)"></path>
+          <text x="600" y="190" class="lbl">get / set, TTL</text>
+        </svg>
+      </div>
+      <figcaption>Both clients speak REST (page CRUD) and Socket.IO (<code>page:*</code> events) to one server process, which is the only thing that touches Postgres or Redis &mdash; clients never talk to either database directly.</figcaption>
+    </figure>
+  </section>
+
+  <section id="lifecycle">
+    <p class="kicker">03 &middot; Request lifecycle</p>
+    <h2>From opening the app to editing together</h2>
+    <ol class="flow">
+      <li>
+        <span class="idx">1</span>
+        <div>
+          <h3>Auth</h3>
+          <p>Login/register hits the REST API; the server checks bcrypt, issues a JWT (<code>{userId, email}</code>). The Flutter client stores it in Hive and attaches it to every REST call and, later, the socket handshake.</p>
+          <div class="events"><span>POST /api/auth/login</span><span>POST /api/auth/register</span></div>
+        </div>
+      </li>
+      <li>
+        <span class="idx">2</span>
+        <div>
+          <h3>Dashboard &amp; open a page</h3>
+          <p>The dashboard lists pages the user has permission on, then fetches the chosen page's full <code>page_data</code> JSONB blob and version (cache-first via Hive, then network).</p>
+          <div class="events"><span>GET /api/pages</span><span>GET /api/pages/:id</span></div>
+        </div>
+      </li>
+      <li>
+        <span class="idx">3</span>
+        <div>
+          <h3>Join the realtime room</h3>
+          <p>The socket connects with the JWT as <code>handshake.auth.token</code> and emits a join. The server verifies access against <code>pages</code> + <code>page_permissions</code>, joins the Socket.IO room, writes presence to Redis with a per-user color, and replies with the current data, version, and permission level.</p>
+          <div class="events"><span>page:join</span><span>page:joined</span><span>page:user:joined</span></div>
+        </div>
+      </li>
+      <li>
+        <span class="idx">4</span>
+        <div>
+          <h3>Edit a widget (JSON-Patch + OT)</h3>
+          <p>The client mutates local state optimistically, diffs old vs. new page data into an RFC-6902 JSON Patch, and sends it with the version it was based on. If another edit landed first, the server rebases the incoming patch against the intervening ones (operational transformation) instead of rejecting it outright. It then persists the new <code>page_data</code> + incremented version, saves an inverse patch for undo, and broadcasts to everyone else.</p>
+          <div class="events"><span>page:patch</span><span>page:patch:applied</span><span>page:patch:received</span><span>page:conflict</span></div>
+        </div>
+      </li>
+      <li>
+        <span class="idx">5</span>
+        <div>
+          <h3>Undo / redo</h3>
+          <p>Popping a user's per-page undo stack, transforming the stored inverse operation against anything that happened concurrently, applying it, and pushing the forward operation onto the redo stack &mdash; so undo stays correct even while others are editing.</p>
+          <div class="events"><span>page:undo</span><span>page:undo:applied</span><span>page:redo</span><span>page:redo:applied</span></div>
+        </div>
+      </li>
+      <li>
+        <span class="idx">6</span>
+        <div>
+          <h3>Presence: cursors &amp; selection</h3>
+          <p>Cursor position and widget selection are broadcast to everyone else in the room (never echoed back to the sender) and cached in Redis with a 30-second TTL so stale cursors vanish automatically.</p>
+          <div class="events"><span>page:cursor</span><span>page:cursor:updated</span><span>page:selection</span><span>page:selection:updated</span></div>
+        </div>
+      </li>
+      <li>
+        <span class="idx">7</span>
+        <div>
+          <h3>Follow mode</h3>
+          <p>Following another user stores the relation in Redis (1-hour TTL) and puts the follower's editor into read-only mode. When the followed user pans or zooms, the server looks up their followers and pushes the new viewport only to those sockets.</p>
+          <div class="events"><span>page:follow:start</span><span>page:follow:started</span><span>page:viewport:update</span><span>page:viewport:updated</span><span>page:follow:stop</span></div>
+        </div>
+      </li>
+      <li>
+        <span class="idx">8</span>
+        <div>
+          <h3>Comments &amp; mentions</h3>
+          <p>Comments persist to Postgres and broadcast to the room; an <code>@mention</code> additionally resolves to a user ID and pushes a direct notification straight to that user's socket(s), independent of the room broadcast.</p>
+          <div class="events"><span>comment:create</span><span>comment:created</span><span>comment:mention</span><span>comment:resolve</span></div>
+        </div>
+      </li>
+      <li>
+        <span class="idx">9</span>
+        <div>
+          <h3>Leave / disconnect</h3>
+          <p>An explicit leave or a dropped socket removes the <code>active_editors</code> row and the Redis presence/cursor keys, then tells everyone else the user is gone.</p>
+          <div class="events"><span>page:leave</span><span>disconnect</span><span>page:user:left</span></div>
+        </div>
+      </li>
+    </ol>
+  </section>
+
+  <section id="persistence">
+    <p class="kicker">04 &middot; Persistence</p>
+    <h2>What lives where</h2>
+    <div class="persist-grid">
+      <div class="persist-card pg">
+        <h3><i></i>PostgreSQL</h3>
+        <p>Source of truth. <code>pages</code> (JSONB <code>page_data</code> + <code>version</code>), <code>page_permissions</code>, patch/operation history for undo-redo, <code>active_editors</code>, comments, users. Legacy <code>canvases</code>/<code>widgets</code> tables still exist but are unused by the live path.</p>
+      </div>
+      <div class="persist-card redis">
+        <h3><i></i>Redis</h3>
+        <p>Ephemeral only, nothing authoritative: active users per page, cursors (30s TTL), follow relations (1h TTL), viewports (30s TTL). Losing Redis loses presence, not data.</p>
+      </div>
+      <div class="persist-card hive">
+        <h3><i></i>Hive (client)</h3>
+        <p>Local cache for instant page loads and offline access, a queue of mutations made while offline, and periodic draft autosave snapshots.</p>
+      </div>
+    </div>
+  </section>
+
+  <section id="trace">
+    <p class="kicker">05 &middot; Watch it happen</p>
+    <h2>Worked example: Alice and Bob on the same page</h2>
+    <p style="color:var(--ink-muted); font-size:14px; max-width:70ch;">Press play, or step through with the pills below. Every event name and payload shape here matches <code>backend/src-js/websocket/page.handler.js</code> and <code>frontend/lib/features/page/bloc/page_bloc.dart</code> exactly &mdash; payloads are shortened for readability.</p>
+
+    <div class="legend">
+      <span class="tag" data-who="alice"><i></i>Alice &middot; owner</span>
+      <span class="tag" data-who="bob"><i></i>Bob &middot; edit access</span>
+      <span class="tag" data-who="pg"><i></i>PostgreSQL &middot; source of truth</span>
+      <span class="tag" data-who="redis"><i></i>Redis &middot; presence &amp; TTL state</span>
+    </div>
+
+    <div class="stage-wrap">
+      <div class="stage" id="stage">
+        <svg class="wires" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+          <line class="wire" x1="8" y1="28" x2="50" y2="28"></line>
+          <line class="wire" x1="50" y1="28" x2="92" y2="28"></line>
+          <line class="wire" x1="46" y1="35" x2="38" y2="72"></line>
+          <line class="wire" x1="54" y1="35" x2="62" y2="72"></line>
+        </svg>
+
+        <div class="node person" id="node-alice" style="left:8%; top:28%;">
+          <div class="avatar" style="--c:var(--accent-alice)">A</div>
+          <span class="label">Alice</span>
+        </div>
+
+        <div class="node person" id="node-bob" style="left:92%; top:28%;">
+          <div class="avatar" style="--c:var(--accent-bob)">B</div>
+          <span class="label">Bob</span>
+        </div>
+
+        <div class="node server" id="node-server" style="left:50%; top:28%;">
+          <div class="box">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="3" y="4" width="18" height="6" rx="1.5"></rect>
+              <rect x="3" y="14" width="18" height="6" rx="1.5"></rect>
+              <circle cx="7" cy="7" r="0.8" fill="currentColor" stroke="none"></circle>
+              <circle cx="7" cy="17" r="0.8" fill="currentColor" stroke="none"></circle>
+            </svg>
+          </div>
+          <span class="label">Server<br><small>src-js/server.js</small></span>
+        </div>
+
+        <div class="node db" id="node-postgres" style="left:38%; top:76%; --db-color:var(--pg);">
+          <div class="icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+              <ellipse cx="12" cy="5" rx="8" ry="3"></ellipse>
+              <path d="M4 5v6c0 1.66 3.58 3 8 3s8-1.34 8-3V5"></path>
+              <path d="M4 11v6c0 1.66 3.58 3 8 3s8-1.34 8-3v-6"></path>
+            </svg>
+          </div>
+          <span class="label">Postgres</span>
+          <span class="pulse-tag" id="tag-postgres"></span>
+        </div>
+
+        <div class="node db" id="node-redis" style="left:62%; top:76%; --db-color:var(--redis);">
+          <div class="icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+              <ellipse cx="12" cy="5" rx="8" ry="3"></ellipse>
+              <path d="M4 5v6c0 1.66 3.58 3 8 3s8-1.34 8-3V5"></path>
+              <path d="M4 11v6c0 1.66 3.58 3 8 3s8-1.34 8-3v-6"></path>
+            </svg>
+          </div>
+          <span class="label">Redis</span>
+          <span class="pulse-tag" id="tag-redis"></span>
+        </div>
+
+        <div class="packet" id="packet"><span class="packet-label" id="packetLabel"></span></div>
+      </div>
+    </div>
+
+    <div class="transport">
+      <button id="btnPrev" aria-label="Previous step">&#10216;</button>
+      <button id="btnPlay" aria-label="Play">&#9654;</button>
+      <button id="btnNext" aria-label="Next step">&#10217;</button>
+      <div class="counter">Step <span id="stepNow">1</span> / <span id="stepTotal">11</span></div>
+      <div class="speeds" role="group" aria-label="Playback speed">
+        <button data-speed="0.5">0.5&times;</button>
+        <button data-speed="1" class="active">1&times;</button>
+        <button data-speed="2">2&times;</button>
+      </div>
+    </div>
+
+    <ol class="steps" id="stepPills"></ol>
+
+    <div class="log" aria-label="WebSocket and REST frame log">
+      <div class="log-head">
+        <span>#</span><span>frame</span><span>event</span><span>payload</span><span>what's happening</span>
+      </div>
+      <div class="log-body" id="logBody"></div>
+    </div>
+  </section>
+
+  <section id="files">
+    <p class="kicker">06 &middot; Where things live</p>
+    <h2>Key files (live path only)</h2>
+    <div class="stack-wrap">
+      <table class="stack">
+        <tr><th>File</th><th>Purpose</th></tr>
+        <tr><td class="mono">backend/src-js/server.js</td><td>Actual entry point (<code>npm run dev</code> / <code>start</code>)</td></tr>
+        <tr><td class="mono">backend/src-js/websocket/page.handler.js</td><td>All <code>page:*</code> socket events: join, patch, OT, undo/redo, cursor, follow, comments</td></tr>
+        <tr><td class="mono">backend/src-js/services/ot.service.js</td><td>Operational transformation for concurrent edits</td></tr>
+        <tr><td class="mono">backend/src-js/services/patch.service.js</td><td>Applies and stores JSON Patch history</td></tr>
+        <tr><td class="mono">backend/src-js/services/undoRedo.service.js</td><td>Inverse-operation generation, undo/redo stacks</td></tr>
+        <tr><td class="mono">backend/src-js/services/comments.service.js</td><td>Comments, @mention extraction and resolution</td></tr>
+        <tr><td class="mono">frontend/lib/features/page/bloc/page_bloc.dart</td><td>Central client state machine driving the editor</td></tr>
+        <tr><td class="mono">frontend/lib/core/api/page_websocket_client.dart</td><td>Socket.IO client wrapper: every <code>page:*</code> emit/listen</td></tr>
+        <tr><td class="mono">frontend/lib/core/services/patch_service.dart</td><td>Diffs local state changes into JSON Patches</td></tr>
+        <tr><td class="mono">frontend/lib/features/page/views/page_editor_screen.dart</td><td>Main editor screen, follow-mode read-only gating</td></tr>
+      </table>
+    </div>
+  </section>
+
+  <p class="foot">Traced directly from the SyncEditor codebase (<code>backend/src-js</code>, <code>frontend/lib/features/page</code>) &middot; save and share this single HTML file &mdash; it has no external dependencies beyond the Google Fonts stylesheet.</p>
+</div>
+
+<script>
+(function(){
+  var REDUCED = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  var ACTORS = {
+    alice:   {x:8,  y:28},
+    bob:     {x:92, y:28},
+    server:  {x:50, y:28},
+    postgres:{x:38, y:76},
+    redis:   {x:62, y:76}
+  };
+
+  var STEPS = [
+    { title:'Open the page', tag:'REST', hops:[
+      {from:'alice', to:'server', event:'GET /api/pages/:id', detail:'Authorization: Bearer <jwt>', note:'Alice requests the page over REST before any socket exists.'},
+      {db:'postgres', op:'SELECT * FROM pages WHERE id=$1'},
+      {from:'server', to:'alice', event:'200 OK', detail:'{ page_data, version: 5 }', note:'Full JSONB page document + current version returned.'}
+    ]},
+    { title:'Alice joins the room', tag:'WS', hops:[
+      {from:'alice', to:'server', event:'page:join', detail:'{ pageId: "42" }', note:'Socket connects with the JWT from login, then asks to join.'},
+      {db:'postgres', op:'pages ⋈ page_permissions (access check)'},
+      {db:'redis', op:'HSET page:42:users alice {...}'},
+      {from:'server', to:'alice', event:'page:joined', detail:'{ version:5, permission:"owner", activeUsers:[Alice] }'}
+    ]},
+    { title:'Bob joins the room', tag:'WS', hops:[
+      {from:'bob', to:'server', event:'page:join', detail:'{ pageId: "42" }'},
+      {db:'redis', op:'HSET page:42:users bob {...}'},
+      {from:'server', to:'bob', event:'page:joined', detail:'activeUsers:[Alice, Bob]'},
+      {from:'server', to:'alice', event:'page:user:joined', detail:'{ user: Bob }', note:'Broadcast to everyone already in the room.'}
+    ]},
+    { title:'Alice edits a widget', tag:'WS', hops:[
+      {from:'alice', to:'server', event:'page:patch', detail:'{ patches:[...], clientVersion:5 }', note:'Local optimistic move is diffed into a JSON Patch.'},
+      {db:'postgres', op:'UPDATE pages SET page_data=…, version=6'},
+      {from:'server', to:'alice', event:'page:patch:applied', detail:'{ version:6 }'},
+      {from:'server', to:'bob', event:'page:patch:received', detail:'{ version:6 }', note:"Bob's canvas applies the same patch and the rectangle moves."}
+    ]},
+    { title:'Bob follows Alice', tag:'WS', hops:[
+      {from:'bob', to:'server', event:'page:follow:start', detail:'{ targetUserId: "alice" }'},
+      {db:'redis', op:'HSET page:42:follows bob→alice (TTL 1h)'},
+      {from:'server', to:'bob', event:'page:follow:started', detail:'{ targetUserName:"Alice", initialViewport }', note:"Bob's canvas goes read-only — library hides, drag/select disabled."}
+    ]},
+    { title:"Bob's view follows Alice", tag:'WS', hops:[
+      {from:'alice', to:'server', event:'page:viewport:update', detail:'{ x:420, y:180, zoom:1.4 }'},
+      {db:'redis', op:'SETEX page:42:viewport:alice 30'},
+      {from:'server', to:'bob', event:'page:viewport:updated', detail:'{ userId:"alice", viewport }', note:'Server looked up who follows Alice — only Bob gets this.'}
+    ]},
+    { title:'Live cursor', tag:'WS', hops:[
+      {from:'alice', to:'server', event:'page:cursor', detail:'{ position:{x:512,y:244} }'},
+      {db:'redis', op:'HSET …:cursors alice (EXPIRE 30)'},
+      {from:'server', to:'bob', event:'page:cursor:updated', detail:'{ userName:"Alice", userColor:"#3B82F6" }', note:'Alice never receives her own echo.'}
+    ]},
+    { title:'Alice undoes her edit', tag:'WS', hops:[
+      {from:'alice', to:'server', event:'page:undo', detail:'{ pageId: "42" }', note:'Server pops her undo stack and transforms the inverse op.'},
+      {db:'postgres', op:'UPDATE pages SET page_data=…, version=7'},
+      {from:'server', to:'alice', event:'page:undo:applied', detail:'{ version:7 }'},
+      {from:'server', to:'bob', event:'page:patch:received', detail:'{ version:7, isUndo:true }'}
+    ]},
+    { title:'Bob stops following', tag:'WS', hops:[
+      {from:'bob', to:'server', event:'page:follow:stop', detail:'{ pageId: "42" }'},
+      {db:'redis', op:'HDEL page:42:follows bob'},
+      {from:'server', to:'bob', event:'page:follow:stopped', detail:'', note:'Editing re-enables — drag and select flip back on.'}
+    ]},
+    { title:'Bob comments and mentions Alice', tag:'WS', hops:[
+      {from:'bob', to:'server', event:'comment:create', detail:'{ content:"@Alice round the corners?" }'},
+      {db:'postgres', op:'INSERT INTO comments (…, widget_id)'},
+      {from:'server', to:'bob', event:'comment:created', detail:'{ isOwn:true }'},
+      {from:'server', to:'alice', event:'comment:mention', detail:'{ mentionedBy:"Bob" }', note:"Sent straight to Alice's socket, outside the room broadcast."}
+    ]},
+    { title:'Alice disconnects', tag:'WS', hops:[
+      {from:'alice', to:'server', event:'disconnect', detail:'(socket closed)'},
+      {db:'postgres', op:'DELETE FROM active_editors …'},
+      {db:'redis', op:'HDEL …:users, …:cursors alice'},
+      {from:'server', to:'bob', event:'page:user:left', detail:'{ userId:"alice" }', note:'Her avatar and live cursor disappear from Bob’s list.'}
+    ]}
+  ];
+
+  var packet = document.getElementById('packet');
+  var packetLabel = document.getElementById('packetLabel');
+  var logBody = document.getElementById('logBody');
+  var stepPills = document.getElementById('stepPills');
+  var stepNow = document.getElementById('stepNow');
+  var btnPlay = document.getElementById('btnPlay');
+  var btnPrev = document.getElementById('btnPrev');
+  var btnNext = document.getElementById('btnNext');
+
+  document.getElementById('stepTotal').textContent = STEPS.length;
+
+  STEPS.forEach(function(step, i){
+    var li = document.createElement('li');
+    var btn = document.createElement('button');
+    btn.innerHTML = '<span class="n">' + (i+1) + '</span>' + step.title;
+    btn.addEventListener('click', function(){ playing = false; updatePlayBtn(); goToStep(i); });
+    li.appendChild(btn);
+    stepPills.appendChild(li);
+  });
+
+  function sleep(ms){ return new Promise(function(res){ setTimeout(res, ms); }); }
+  function nextFrame(){ return new Promise(function(res){ requestAnimationFrame(function(){ requestAnimationFrame(res); }); }); }
+
+  var speed = 1;
+  function dur(base){ return REDUCED ? Math.min(base, 80) : base / speed; }
+
+  function actorColor(a){
+    return a === 'alice' ? 'var(--accent-alice)' : a === 'bob' ? 'var(--accent-bob)' : 'var(--accent-server)';
+  }
+  function actorDot(a){
+    if(a === 'alice') return '<i style="background:var(--accent-alice)"></i>';
+    if(a === 'bob') return '<i style="background:var(--accent-bob)"></i>';
+    return '<i style="background:var(--accent-server)"></i>';
+  }
+  function actorName(a){
+    return a === 'alice' ? 'Alice' : a === 'bob' ? 'Bob' : 'Server';
+  }
+
+  function placePacket(actor, color, animate){
+    var p = ACTORS[actor];
+    if(!animate){ packet.style.transition = 'none'; }
+    packet.style.left = p.x + '%';
+    packet.style.top = p.y + '%';
+    packet.style.background = color;
+    packet.style.opacity = '1';
+    if(!animate){
+      void packet.offsetHeight;
+      packet.style.transition = '';
+    }
+  }
+
+  function pulseDb(node){
+    return new Promise(function(res){
+      var el = document.getElementById('node-' + node);
+      el.classList.add('active');
+      setTimeout(function(){
+        el.classList.remove('active');
+        res();
+      }, dur(520));
+    });
+  }
+
+  function makeRow(hop, num, isFirst){
+    var row = document.createElement('div');
+    row.className = 'row' + (isFirst ? ' row-start' : '') + (hop.db ? ' db-row' : '');
+    if(hop.db){
+      row.innerHTML =
+        '<div class="num">' + num + '</div>' +
+        '<div class="dir"><i style="background:' + (hop.db === 'postgres' ? 'var(--pg)' : 'var(--redis)') + '"></i>' + (hop.db === 'postgres' ? 'Postgres' : 'Redis') + '</div>' +
+        '<div class="event mono">' + (hop.db === 'postgres' ? 'write / read' : 'cache op') + '</div>' +
+        '<div class="payload mono">' + hop.op + '</div>' +
+        '<div class="note">&mdash;</div>';
+    } else {
+      row.innerHTML =
+        '<div class="num">' + num + '</div>' +
+        '<div class="dir">' + actorDot(hop.from) + actorName(hop.from) + ' &rarr; ' + actorName(hop.to) + '</div>' +
+        '<div class="event mono">' + hop.event + '</div>' +
+        '<div class="payload mono">' + (hop.detail || '') + '</div>' +
+        '<div class="note">' + (hop.note || '') + '</div>';
+    }
+    return row;
+  }
+
+  function buildRowsUpTo(n){
+    logBody.innerHTML = '';
+    for(var i = 0; i < n; i++){
+      STEPS[i].hops.forEach(function(hop, hi){
+        logBody.appendChild(makeRow(hop, i + 1, hi === 0));
+      });
+    }
+    logBody.scrollTop = logBody.scrollHeight;
+  }
+
+  function lastMoveTarget(step){
+    for(var i = step.hops.length - 1; i >= 0; i--){
+      if(step.hops[i].to) return step.hops[i].to;
+    }
+    return null;
+  }
+
+  var gen = 0, current = 0, playing = false;
+
+  function updateChrome(){
+    stepNow.textContent = current + 1;
+    Array.prototype.forEach.call(stepPills.children, function(li, i){
+      li.firstChild.classList.toggle('active', i === current);
+    });
+    btnPrev.disabled = current === 0;
+  }
+
+  function updatePlayBtn(){
+    btnPlay.innerHTML = playing ? '&#10074;&#10074;' : '&#9654;';
+    btnPlay.setAttribute('aria-label', playing ? 'Pause' : 'Play');
+  }
+
+  async function runHop(hop, myGen, stepIndex, hopIndex){
+    if(gen !== myGen) return;
+    if(hop.db){
+      logBody.appendChild(makeRow(hop, stepIndex + 1, hopIndex === 0));
+      logBody.scrollTop = logBody.scrollHeight;
+      await pulseDb(hop.db);
+      return;
+    }
+    placePacket(hop.from, actorColor(hop.from), false);
+    packetLabel.textContent = hop.event;
+    packetLabel.style.color = actorColor(hop.from);
+    await nextFrame();
+    if(gen !== myGen) return;
+    placePacket(hop.to, actorColor(hop.from), true);
+    var row = makeRow(hop, stepIndex + 1, hopIndex === 0);
+    row.classList.add('flash');
+    logBody.appendChild(row);
+    logBody.scrollTop = logBody.scrollHeight;
+    await sleep(dur(650));
+  }
+
+  async function animateCurrent(){
+    var myGen = gen;
+    var step = STEPS[current];
+    for(var i = 0; i < step.hops.length; i++){
+      if(gen !== myGen) return;
+      await runHop(step.hops[i], myGen, current, i);
+    }
+    if(gen !== myGen) return;
+    if(playing){
+      if(current < STEPS.length - 1){
+        await sleep(dur(750));
+        if(gen !== myGen || !playing) return;
+        goToStep(current + 1);
+      } else {
+        playing = false;
+        updatePlayBtn();
+      }
+    }
+  }
+
+  function goToStep(n){
+    gen++;
+    n = Math.max(0, Math.min(STEPS.length - 1, n));
+    current = n;
+    buildRowsUpTo(n);
+    var prevEnd = n > 0 ? lastMoveTarget(STEPS[n - 1]) : null;
+    if(prevEnd){
+      placePacket(prevEnd, actorColor('server'), false);
+    } else {
+      packet.style.opacity = '0';
+    }
+    packetLabel.textContent = '';
+    updateChrome();
+    animateCurrent();
+  }
+
+  btnPlay.addEventListener('click', function(){
+    playing = !playing;
+    updatePlayBtn();
+    if(playing) animateCurrent();
+  });
+  btnPrev.addEventListener('click', function(){
+    playing = false; updatePlayBtn();
+    goToStep(current - 1);
+  });
+  btnNext.addEventListener('click', function(){
+    playing = false; updatePlayBtn();
+    goToStep(current + 1);
+  });
+  Array.prototype.forEach.call(document.querySelectorAll('.speeds button'), function(b){
+    b.addEventListener('click', function(){
+      speed = parseFloat(b.getAttribute('data-speed'));
+      Array.prototype.forEach.call(document.querySelectorAll('.speeds button'), function(x){ x.classList.remove('active'); });
+      b.classList.add('active');
+    });
+  });
+
+  updatePlayBtn();
+  goToStep(0);
+})();
+</script>

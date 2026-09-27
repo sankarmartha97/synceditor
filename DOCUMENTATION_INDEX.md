@@ -55,6 +55,9 @@ Cursor position synchronization fix for multi-user collaboration - resolves coor
 ### 12-FOLLOW_FEATURE
 User follow feature (Figma-like) - Design specifications, API documentation, implementation checklist, and complete architectural plan.
 
+### 13-SCALING_AND_COLLABORATION
+Scaling and multi-user collaboration plan - Widget normalization to fix full-page JSON rewrites, lock-free concurrent editing via per-row optimistic checks, Redis-backed horizontal scaling, and a Projects layer above Pages.
+
 ---
 
 ## 📖 How to Use This Documentation
@@ -88,7 +91,8 @@ SyncEditor/
     ├── 09-DEVELOPMENT_PHASES/
     ├── 10-SYNC_FEATURES/
     ├── 11-CURSOR_POSITION_FIX/
-    └── 12-FOLLOW_FEATURE/
+    ├── 12-FOLLOW_FEATURE/
+    └── 13-SCALING_AND_COLLABORATION/
 ```
 
 ---
@@ -97,11 +101,11 @@ SyncEditor/
 
 - **Project Setup**: [devkit/01-PROJECT_SETUP/](devkit/01-PROJECT_SETUP/)
 - **Installation**: [devkit/03-INSTALLATION_GUIDES/](devkit/03-INSTALLATION_GUIDES/)
-- **Latest Feature**: [devkit/12-FOLLOW_FEATURE/](devkit/12-FOLLOW_FEATURE/)
+- **Latest Feature**: [devkit/13-SCALING_AND_COLLABORATION/](devkit/13-SCALING_AND_COLLABORATION/)
 - **Bug Fixes**: [devkit/11-CURSOR_POSITION_FIX/](devkit/11-CURSOR_POSITION_FIX/)
 
 ---
 
 **Note:** For detailed file listings within each folder, navigate to the specific folder in the devkit directory.
 
-**Last Updated:** September 1, 2026
+**Last Updated:** September 27, 2026
