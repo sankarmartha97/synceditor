@@ -234,10 +234,12 @@ class _PageCanvasViewState extends State<PageCanvasView>
                       ),
                       child: Stack(
                         children: [
-                          // Render only root widgets (nested children rendered by parents)
+                          // Render only root widgets that are actually visible
+                          // (or close to it) -- nested children are rendered
+                          // internally by their parent, not virtualized here.
                           ...WidgetTreeHelper.getRootWidgets(
-                            page.pageData.widgets,
-                          ).map((widget) {
+                            page.pageData.widgetList,
+                          ).where(_isRootWidgetNearViewport).map((widget) {
                             // Force rebuild by including selection state in key
                             final selectionKey = state
                                 .otherUsersSelections
@@ -262,6 +264,50 @@ class _PageCanvasViewState extends State<PageCanvasView>
         },
       ),
     );
+  }
+
+  /// Track C: viewport virtualization. Skips building the subtree for a root
+  /// widget whose bounding box doesn't come anywhere near the visible canvas
+  /// area -- on a large page, this is what keeps rendering cost tied to what's
+  /// on screen rather than to the total widget count. Errs generously toward
+  /// "visible": a wide margin, and a first-frame fallback that treats
+  /// everything as visible, since under-culling just costs a bit of extra
+  /// render work while over-culling would make widgets vanish.
+  static const double _virtualizationMargin = 400.0;
+
+  bool _isRootWidgetNearViewport(PageWidget widget) {
+    final rect = _visibleCanvasRect();
+    if (rect == null) return true; // no layout info yet -- render everything
+
+    final widgetRect = Rect.fromLTWH(
+      widget.position.dx,
+      widget.position.dy,
+      widget.size.width,
+      widget.size.height,
+    );
+    return widgetRect.overlaps(rect);
+  }
+
+  /// The currently-visible area, in canvas (unscaled child) coordinates,
+  /// expanded by [_virtualizationMargin] on every side. Derived from the same
+  /// transform + render size already used by [_sendViewportUpdate] for the
+  /// follow feature -- this is read-only and doesn't send anything anywhere.
+  Rect? _visibleCanvasRect() {
+    final renderBox = context.findRenderObject() as RenderBox?;
+    if (renderBox == null || !renderBox.hasSize) return null;
+
+    final matrix = _transformationController.value;
+    final translation = matrix.getTranslation();
+    final scale = matrix.getMaxScaleOnAxis();
+    if (scale <= 0) return null;
+
+    final size = renderBox.size;
+    final left = -translation.x / scale - _virtualizationMargin;
+    final top = -translation.y / scale - _virtualizationMargin;
+    final width = size.width / scale + _virtualizationMargin * 2;
+    final height = size.height / scale + _virtualizationMargin * 2;
+
+    return Rect.fromLTWH(left, top, width, height);
   }
 
   /// Exit follow mode when user interacts
@@ -291,7 +337,7 @@ class _PageCanvasViewState extends State<PageCanvasView>
 
     final isSelected = state.selectedWidgetId == widget.id;
     final canEdit = state.canEdit;
-    final allWidgets = state.currentPage!.pageData.widgets;
+    final allWidgets = state.currentPage!.pageData.widgetList;
 
     // Check if selected by another user
     final selectedByOthers = state.otherUsersSelections.entries
@@ -662,7 +708,7 @@ class _PageCanvasViewState extends State<PageCanvasView>
 
     // ✨ V2.3: Calculate vertical position (column layout) for library drops
     final state = context.read<PageBloc>().state;
-    final allWidgets = state.currentPage!.pageData.widgets;
+    final allWidgets = state.currentPage!.pageData.widgetList;
     final existingChildren = WidgetTreeHelper.getChildren(
       targetContainer.id,
       allWidgets,
@@ -708,7 +754,7 @@ class _PageCanvasViewState extends State<PageCanvasView>
 
     // ✨ V2.1: Calculate vertical position (column layout)
     final state = context.read<PageBloc>().state;
-    final allWidgets = state.currentPage!.pageData.widgets;
+    final allWidgets = state.currentPage!.pageData.widgetList;
     final existingChildren = WidgetTreeHelper.getChildren(
       targetContainer.id,
       allWidgets,

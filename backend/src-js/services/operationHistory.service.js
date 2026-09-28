@@ -11,7 +11,7 @@ const { pool } = require('../config/database');
  * @returns {string} Operation type: 'add', 'remove', 'replace', 'move', 'copy'
  */
 const extractOperationType = (operation) => {
-  return operation.op || 'unknown';
+  return operation?.op || 'unknown';
 };
 
 /**
@@ -163,19 +163,33 @@ const getOperationById = async (operationId) => {
 };
 
 /**
- * Get all operations since a version (for conflict detection)
+ * Get all operations since a version (for conflict detection / OT transform).
+ *
  * @param {string} pageId
  * @param {number} sinceVersion
+ * @param {string} [excludeUserId] - When provided, excludes this user's own
+ *   operations. This matters specifically for undo/redo: without it, a
+ *   user's own subsequent undo/redo steps show up as "concurrent operations"
+ *   against their own next undo/redo, since each one is itself recorded as a
+ *   new operation_history row. OT then transforms against a growing pile of
+ *   the user's own history instead of genuine edits from someone else, and
+ *   can cancel the operation down to nothing after a few steps -- a second
+ *   consecutive redo being silently dropped was exactly this. Concurrency
+ *   conflict resolution is meant for reconciling *different* people's edits;
+ *   a single user's own linear undo/redo chain isn't a conflict with itself.
  * @returns {Promise<Array>} Array of operations
  */
-const getOperationsSinceVersion = async (pageId, sinceVersion) => {
+const getOperationsSinceVersion = async (pageId, sinceVersion, excludeUserId = null) => {
   try {
-    const result = await pool.query(
-      `SELECT * FROM operation_history
-       WHERE page_id = $1 AND from_version >= $2
-       ORDER BY to_version ASC`,
-      [pageId, sinceVersion]
-    );
+    const params = [pageId, sinceVersion];
+    let query = `SELECT * FROM operation_history WHERE page_id = $1 AND from_version >= $2`;
+    if (excludeUserId) {
+      params.push(excludeUserId);
+      query += ` AND user_id != $${params.length}`;
+    }
+    query += ` ORDER BY to_version ASC`;
+
+    const result = await pool.query(query, params);
 
     // PostgreSQL returns JSONB columns as objects, no need to parse
     return result.rows.map(row => ({
@@ -226,19 +240,27 @@ const getUserUndoStack = async (pageId, userId) => {
  * @param {string} pageId
  * @param {string} userId
  * @param {string} operationId
+ * @param {Object} [options]
+ * @param {boolean} [options.preserveRedoStack=false] - Normally a new edit
+ *   invalidates redo history, so this clears redo_stack by default. Pass
+ *   true when this push is itself recording a *redo* (making it undoable
+ *   again) -- otherwise this call stomps on whatever popFromRedoStack just
+ *   correctly left behind for further redos, collapsing multi-level redo
+ *   down to one step.
  * @returns {Promise<void>}
  */
-const pushToUndoStack = async (pageId, userId, operationId) => {
+const pushToUndoStack = async (pageId, userId, operationId, options = {}) => {
+  const { preserveRedoStack = false } = options;
   try {
     await pool.query(
       `INSERT INTO user_undo_stacks (page_id, user_id, undo_stack)
        VALUES ($1, $2, ARRAY[$3]::UUID[])
        ON CONFLICT (page_id, user_id)
-       DO UPDATE SET 
+       DO UPDATE SET
          undo_stack = ARRAY[$3]::UUID[] || user_undo_stacks.undo_stack,
-         redo_stack = ARRAY[]::UUID[], -- Clear redo stack on new operation
+         redo_stack = CASE WHEN $4 THEN user_undo_stacks.redo_stack ELSE ARRAY[]::UUID[] END,
          updated_at = NOW()`,
-      [pageId, userId, operationId]
+      [pageId, userId, operationId, preserveRedoStack]
     );
   } catch (error) {
     console.error('❌ Push to undo stack error:', error);
@@ -254,15 +276,21 @@ const pushToUndoStack = async (pageId, userId, operationId) => {
  */
 const popFromUndoStack = async (pageId, userId) => {
   try {
+    // RETURNING evaluates against the row *after* SET has already applied, so
+    // `RETURNING undo_stack[1]` would return the stack's NEW top (or NULL if
+    // it just emptied) rather than the operation actually popped -- that was
+    // a real bug here. redo_stack's new first element is exactly the value
+    // that was popped (it's what got prepended to it in this same SET), so
+    // reading it back from there gives the correct, pre-pop value instead.
     const result = await pool.query(
       `UPDATE user_undo_stacks
-       SET 
+       SET
          undo_stack = undo_stack[2:array_length(undo_stack, 1)],
          redo_stack = ARRAY[undo_stack[1]] || redo_stack,
          updated_at = NOW()
        WHERE page_id = $1 AND user_id = $2
        AND array_length(undo_stack, 1) > 0
-       RETURNING undo_stack[1] as operation_id`,
+       RETURNING redo_stack[1] as operation_id`,
       [pageId, userId]
     );
 

@@ -55,3 +55,4 @@ coverage/
 .packages
 pubspec.lock
 build/
+.claude/

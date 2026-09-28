@@ -111,6 +111,13 @@ class PageCacheService {
     return _storage.isPageCached(pageId);
   }
 
+  /// Synchronously read a page straight out of the local cache, or null if
+  /// it isn't cached. Used for instant-paint-then-reconcile loading, where
+  /// the caller needs the cached copy before the network call resolves.
+  PageModel? getCachedPage(String pageId) {
+    return _storage.getPage(pageId);
+  }
+
   /// Clear all cached pages
   Future<void> clearCache() async {
     await _storage.clearAllPages();

@@ -18,6 +18,7 @@ const migrations = [
   '007_create_page_versions_table.sql',
   '008_create_active_editors_table.sql',
   '009_create_page_patches_table.sql',
+  '010_create_page_widgets_table.sql',
 ];
 
 async function runMigrations() {
@@ -44,7 +45,7 @@ async function runMigrations() {
       SELECT table_name 
       FROM information_schema.tables 
       WHERE table_schema = 'public' 
-      AND table_name IN ('pages', 'page_permissions', 'page_versions', 'active_editors', 'page_patches')
+      AND table_name IN ('pages', 'page_permissions', 'page_versions', 'active_editors', 'page_patches', 'page_widgets')
       ORDER BY table_name;
     `);
     

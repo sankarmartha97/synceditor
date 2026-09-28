@@ -107,7 +107,7 @@ class _WidgetTreeViewState extends State<WidgetTreeView> {
           );
         }
 
-        final widgets = page.pageData.widgets;
+        final widgets = page.pageData.widgetList;
         final rootWidgets = widgets.where((w) => w.parentId == null).toList();
 
         if (rootWidgets.isEmpty) {

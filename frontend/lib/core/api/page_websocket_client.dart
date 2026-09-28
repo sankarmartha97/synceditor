@@ -23,6 +23,8 @@ class PageWebSocketClient {
       StreamController<PagePatchReceivedEvent>.broadcast();
   final _pageConflictController =
       StreamController<PageConflictEvent>.broadcast();
+  final _pagePatchErrorController =
+      StreamController<PagePatchErrorEvent>.broadcast();
   final _pageCursorController = StreamController<PageCursorEvent>.broadcast();
   final _pageSelectionController =
       StreamController<PageSelectionEvent>.broadcast();
@@ -66,6 +68,8 @@ class PageWebSocketClient {
       _pagePatchReceivedController.stream;
   Stream<PageConflictEvent> get conflictEvents =>
       _pageConflictController.stream;
+  Stream<PagePatchErrorEvent> get patchErrorEvents =>
+      _pagePatchErrorController.stream;
   Stream<PageCursorEvent> get cursorEvents => _pageCursorController.stream;
   Stream<PageSelectionEvent> get selectionEvents =>
       _pageSelectionController.stream;
@@ -275,6 +279,9 @@ class PageWebSocketClient {
 
     _socket!.on('page:patch:error', (data) {
       print('❌ Patch error: ${data['message']}');
+      _pagePatchErrorController.add(
+        PagePatchErrorEvent(message: data['message'] ?? 'Patch failed'),
+      );
     });
 
     _socket!.on('connection:error', (data) {
@@ -435,15 +442,17 @@ class PageWebSocketClient {
     _currentPageId = null;
   }
 
-  /// Send JSON Patch update
-  void sendPatch({
+  /// Send JSON Patch update. Returns false without emitting anything if the
+  /// socket isn't connected, so callers can decide how to handle that (e.g.
+  /// queue it for replay) instead of the patch silently vanishing.
+  bool sendPatch({
     required String pageId,
     required List<Map<String, dynamic>> patches,
     required int clientVersion,
   }) {
     if (_socket?.connected != true) {
       print('⚠️ Cannot send patch: Socket not connected');
-      return;
+      return false;
     }
 
     print('🔄 Sending patch: ${patches.length} operations');
@@ -452,6 +461,7 @@ class PageWebSocketClient {
       'patches': patches,
       'clientVersion': clientVersion,
     });
+    return true;
   }
 
   /// Send cursor position
@@ -604,6 +614,7 @@ class PageWebSocketClient {
     _pagePatchAppliedController.close();
     _pagePatchReceivedController.close();
     _pageConflictController.close();
+    _pagePatchErrorController.close();
     _pageCursorController.close();
     _pageSelectionController.close();
     _commentCreatedController.close();
@@ -715,6 +726,12 @@ class PageConflictEvent {
     required this.serverVersion,
     required this.message,
   });
+}
+
+class PagePatchErrorEvent {
+  final String message;
+
+  PagePatchErrorEvent({required this.message});
 }
 
 class PageCursorEvent {

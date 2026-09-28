@@ -12,9 +12,11 @@ class PatchService {
     try {
       final patches = <Map<String, dynamic>>[];
 
-      // Compare widgets
-      final oldWidgets = oldData.widgets;
-      final newWidgets = newData.widgets;
+      // Compare widgets (in wire order -- widgets is now a Map internally,
+      // but this function's patch paths are array-index based, so it needs
+      // the ordered list view).
+      final oldWidgets = oldData.widgetList;
+      final newWidgets = newData.widgetList;
 
       // Check for removed widgets
       for (var i = 0; i < oldWidgets.length; i++) {
@@ -329,6 +331,66 @@ class PatchService {
     return [
       {'op': 'replace', 'path': '/widgets/$index', 'value': newWidget.toJson()},
     ];
+  }
+
+  /// Generate a minimal, field-level patch for a single widget update instead
+  /// of replacing the whole widget object (generateUpdateWidgetPatch above)
+  /// or diffing the entire page (generatePatch). Cost is bounded by the
+  /// widget's own field count, not by how many widgets the page has -- this
+  /// is the direct-construction path used for the common case (drag/resize/
+  /// property edits) instead of a full old-vs-new page diff.
+  List<Map<String, dynamic>> generateWidgetFieldPatch(
+    int index,
+    PageWidget oldWidget,
+    PageWidget newWidget,
+  ) {
+    final oldJson = oldWidget.toJson();
+    final newJson = newWidget.toJson();
+    final patches = <Map<String, dynamic>>[];
+
+    final allKeys = {...oldJson.keys, ...newJson.keys};
+    for (final key in allKeys) {
+      if (key == 'id') continue; // never changes, never worth sending
+      final oldValue = oldJson[key];
+      final newHasKey = newJson.containsKey(key);
+      final newValue = newJson[key];
+
+      if (_deepEquals(oldValue, newValue)) continue;
+
+      if (!newHasKey) {
+        patches.add({'op': 'remove', 'path': '/widgets/$index/$key'});
+      } else if (!oldJson.containsKey(key)) {
+        // RFC 6902: 'add' on an existing member replaces it, so this is safe
+        // even if the server's copy of this widget happens to already have it.
+        patches.add({'op': 'add', 'path': '/widgets/$index/$key', 'value': newValue});
+      } else {
+        patches.add({'op': 'replace', 'path': '/widgets/$index/$key', 'value': newValue});
+      }
+    }
+
+    return patches;
+  }
+
+  /// Structural equality for JSON-shaped values (Map/List/primitives) --
+  /// Dart's == on Map/List is identity-based, not deep, so this is needed to
+  /// tell whether a field actually changed rather than just being rebuilt.
+  bool _deepEquals(dynamic a, dynamic b) {
+    if (identical(a, b)) return true;
+    if (a is Map && b is Map) {
+      if (a.length != b.length) return false;
+      for (final key in a.keys) {
+        if (!b.containsKey(key) || !_deepEquals(a[key], b[key])) return false;
+      }
+      return true;
+    }
+    if (a is List && b is List) {
+      if (a.length != b.length) return false;
+      for (var i = 0; i < a.length; i++) {
+        if (!_deepEquals(a[i], b[i])) return false;
+      }
+      return true;
+    }
+    return a == b;
   }
 
   /// Generate patch for widget removal

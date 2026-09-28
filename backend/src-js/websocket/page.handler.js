@@ -7,6 +7,8 @@ const { getUserColor } = require('../utils/userColors');
 const operationHistoryService = require('../services/operationHistory.service');
 const undoRedoService = require('../services/undoRedo.service');
 const commentsService = require('../services/comments.service');
+const { syncPageWidgetsTargeted, buildPageDataFromWidgets } = require('../services/pageWidgetsSync.service');
+const { maybeSnapshotAfterWrite } = require('../services/pageSnapshot.service');
 
 // ============================================
 // RATE LIMITING FOR UNDO/REDO
@@ -88,9 +90,13 @@ const setupPageHandlers = (io, socket) => {
       }
 
       const pageInfo = accessCheck.rows[0];
-      const permission = pageInfo.owner_id === socket.userId 
-        ? 'owner' 
+      const permission = pageInfo.owner_id === socket.userId
+        ? 'owner'
         : pageInfo.permission_type;
+
+      // Track B2 cutover: widgets now come from page_widgets, not the blob.
+      // Metadata/name/etc. still come from page_data until B3.
+      pageInfo.page_data = await buildPageDataFromWidgets(pageId, pageInfo.page_data);
 
       // Join page room, plus a per-(page,user) room so other instances can
       // target this user's sockets on this specific page via the Redis
@@ -244,7 +250,9 @@ const setupPageHandlers = (io, socket) => {
         return;
       }
 
-      const currentData = pageResult.rows[0].page_data;
+      // Track B3: page_data is metadata-only now -- widgets come from page_widgets,
+      // the sole source of truth for widget content.
+      const currentData = await buildPageDataFromWidgets(pageId, pageResult.rows[0].page_data);
       const serverVersion = pageResult.rows[0].version;
 
       // Initialize patches to apply
@@ -311,16 +319,57 @@ const setupPageHandlers = (io, socket) => {
         return;
       }
 
-      // Update database with new version
+      // Update database with new version. page_data is metadata-only from
+      // Track B3 onward -- strip widgets before storing (page_widgets is
+      // authoritative for widget content).
+      //
+      // Track C: optimistic concurrency guard. Without "AND version = $4"
+      // here, two requests that both read serverVersion before either had
+      // written back could both proceed to write -- the second silently
+      // overwrites the first with no error, a genuine lost update. This
+      // makes that race detectable: if 0 rows match, someone else's write
+      // already landed between our read and this write, so we abort rather
+      // than commit a version bump derived from data that's now stale.
       const newVersion = serverVersion + 1;
-      await pool.query(
-        `UPDATE pages 
-         SET page_data = $1, 
+      const { widgets: _widgets, ...metadataOnlyPageData } = result.data;
+      const updateResult = await pool.query(
+        `UPDATE pages
+         SET page_data = $1,
              version = $2,
              updated_at = NOW()
-         WHERE id = $3`,
-        [JSON.stringify(result.data), newVersion, pageId]
+         WHERE id = $3 AND version = $4`,
+        [JSON.stringify(metadataOnlyPageData), newVersion, pageId, serverVersion]
       );
+
+      if (updateResult.rowCount === 0) {
+        console.warn(`⚠️  Concurrent write race on page ${pageId}: expected v${serverVersion}, lost the race -- rejecting patch`);
+        socket.emit(SERVER_EVENTS.PAGE_CONFLICT, {
+          clientVersion,
+          serverVersion,
+          message: 'Another edit landed at the same instant -- please retry',
+        });
+        return;
+      }
+
+      // Persist the actual widget changes to their rows. This is no longer a
+      // "dual write" / safety net (Track B1/B2) -- page_widgets is now the
+      // only place widget content is stored, so a failure here is real data
+      // loss for this patch, not a stale mirror. syncPageWidgetsTargeted runs
+      // in its own transaction, so a failure here doesn't corrupt partial
+      // rows, but it does mean this patch's widget changes didn't take even
+      // though `version` already advanced -- logged loudly for now; a full
+      // rollback of the version bump is more machinery than this warrants
+      // for what should be a very rare failure (the same gap already existed
+      // implicitly in B1/B2, just with a stale-mirror consequence instead of
+      // a lost-write one).
+      try {
+        await syncPageWidgetsTargeted(pageId, currentData, result.data, socket.userId);
+      } catch (syncError) {
+        console.error(`âŒ CRITICAL: page ${pageId} v${newVersion} advanced but widget changes failed to persist:`, syncError);
+      }
+
+      // Track B3: periodic full snapshot for fast history replay / retention
+      await maybeSnapshotAfterWrite(pageId, newVersion, socket.userId);
 
       // Save patch history (save the transformed patches that were actually applied)
       await patchService.savePatchHistory(
@@ -537,13 +586,16 @@ const setupPageHandlers = (io, socket) => {
         return;
       }
 
-      const currentData = pageResult.rows[0].page_data;
+      // Track B3: page_data is metadata-only -- widgets come from page_widgets.
+      const currentData = await buildPageDataFromWidgets(pageId, pageResult.rows[0].page_data);
       const currentVersion = pageResult.rows[0].version;
 
-      // Get operations that happened after the operation we're undoing
+      // Get *other users'* operations since the one we're undoing -- this
+      // user's own subsequent undo/redo steps aren't a conflict with this undo.
       const concurrentOps = await operationHistoryService.getOperationsSinceVersion(
         pageId,
-        undoVersion
+        undoVersion,
+        socket.userId
       );
 
       console.log(`   Found ${concurrentOps.length} concurrent operations since v${undoVersion}`);
@@ -586,16 +638,38 @@ const setupPageHandlers = (io, socket) => {
         return;
       }
 
-      // Update database
+      // Update database (page_data metadata-only, see page:patch handler).
+      // Track C optimistic guard, same reasoning as page:patch.
       const newVersion = currentVersion + 1;
-      await pool.query(
-        `UPDATE pages 
-         SET page_data = $1, 
+      const { widgets: _undoWidgets, ...undoMetadataOnly } = result.data;
+      const undoUpdateResult = await pool.query(
+        `UPDATE pages
+         SET page_data = $1,
              version = $2,
              updated_at = NOW()
-         WHERE id = $3`,
-        [JSON.stringify(result.data), newVersion, pageId]
+         WHERE id = $3 AND version = $4`,
+        [JSON.stringify(undoMetadataOnly), newVersion, pageId, currentVersion]
       );
+
+      if (undoUpdateResult.rowCount === 0) {
+        console.warn(`⚠️  Concurrent write race on page ${pageId} (undo): expected v${currentVersion}, lost the race`);
+        socket.emit(SERVER_EVENTS.PAGE_UNDO_ERROR, {
+          message: 'Another edit landed at the same instant -- please retry',
+        });
+        // Restore the stacks: popFromUndoStack already moved this operation
+        // to redo_stack before we knew the write would fail -- put it back.
+        await operationHistoryService.popFromRedoStack(pageId, socket.userId);
+        return;
+      }
+
+      // Persist widget changes (see page:patch handler for details)
+      try {
+        await syncPageWidgetsTargeted(pageId, currentData, result.data, socket.userId);
+      } catch (syncError) {
+        console.error(`âŒ CRITICAL: page ${pageId} v${newVersion} (undo) advanced but widget changes failed to persist:`, syncError);
+      }
+
+      await maybeSnapshotAfterWrite(pageId, newVersion, socket.userId);
 
       // Save the undo as a new operation in history
       const redoOp = operation.operation; // Forward operation becomes redo
@@ -713,13 +787,16 @@ const setupPageHandlers = (io, socket) => {
         return;
       }
 
-      const currentData = pageResult.rows[0].page_data;
+      // Track B3: page_data is metadata-only -- widgets come from page_widgets.
+      const currentData = await buildPageDataFromWidgets(pageId, pageResult.rows[0].page_data);
       const currentVersion = pageResult.rows[0].version;
 
-      // Get operations that happened after the original redo operation
+      // Get *other users'* operations since the original redo operation --
+      // this user's own subsequent undo/redo steps aren't a conflict with this redo.
       const concurrentOps = await operationHistoryService.getOperationsSinceVersion(
         pageId,
-        redoVersion
+        redoVersion,
+        socket.userId
       );
 
       console.log(`   Found ${concurrentOps.length} concurrent operations since v${redoVersion}`);
@@ -736,6 +813,27 @@ const setupPageHandlers = (io, socket) => {
         );
       }
 
+      // If OT cancelled the redo entirely (e.g. it targeted something a later
+      // operation removed), there's nothing left to apply or save -- mirror
+      // the same early-return the page:patch handler already does for this,
+      // instead of falling through to saveOperation with an empty operation
+      // array, which crashes (extractOperationType assumes at least one op).
+      if (transformedRedo.length === 0) {
+        console.log(`   âš ï¸ Redo cancelled by OT -- nothing left to reapply`);
+        const canUndoNow = await operationHistoryService.canUndo(pageId, socket.userId);
+        const canRedoNow = await operationHistoryService.canRedo(pageId, socket.userId);
+        socket.emit(SERVER_EVENTS.PAGE_REDO_APPLIED, {
+          pageId,
+          version: currentVersion,
+          patches: [],
+          operationDescription: 'No-op (superseded by other changes)',
+          canUndo: canUndoNow,
+          canRedo: canRedoNow,
+          timestamp: new Date().toISOString(),
+        });
+        return;
+      }
+
       // Apply redo
       const result = patchService.applyPatch(currentData, transformedRedo);
       if (!result.success) {
@@ -750,16 +848,38 @@ const setupPageHandlers = (io, socket) => {
         return;
       }
 
-      // Update database
+      // Update database (page_data metadata-only, see page:patch handler).
+      // Track C optimistic guard, same reasoning as page:patch.
       const newVersion = currentVersion + 1;
-      await pool.query(
-        `UPDATE pages 
-         SET page_data = $1, 
+      const { widgets: _redoWidgets, ...redoMetadataOnly } = result.data;
+      const redoUpdateResult = await pool.query(
+        `UPDATE pages
+         SET page_data = $1,
              version = $2,
              updated_at = NOW()
-         WHERE id = $3`,
-        [JSON.stringify(result.data), newVersion, pageId]
+         WHERE id = $3 AND version = $4`,
+        [JSON.stringify(redoMetadataOnly), newVersion, pageId, currentVersion]
       );
+
+      if (redoUpdateResult.rowCount === 0) {
+        console.warn(`⚠️  Concurrent write race on page ${pageId} (redo): expected v${currentVersion}, lost the race`);
+        socket.emit(SERVER_EVENTS.PAGE_REDO_ERROR, {
+          message: 'Another edit landed at the same instant -- please retry',
+        });
+        // Restore the stacks: popFromRedoStack already moved this operation
+        // to undo_stack before we knew the write would fail -- put it back.
+        await operationHistoryService.popFromUndoStack(pageId, socket.userId);
+        return;
+      }
+
+      // Persist widget changes (see page:patch handler for details)
+      try {
+        await syncPageWidgetsTargeted(pageId, currentData, result.data, socket.userId);
+      } catch (syncError) {
+        console.error(`âŒ CRITICAL: page ${pageId} v${newVersion} (redo) advanced but widget changes failed to persist:`, syncError);
+      }
+
+      await maybeSnapshotAfterWrite(pageId, newVersion, socket.userId);
 
       // Save the redo as a new operation in history
       const redoInverse = undoRedoService.generateInverse(transformedRedo, currentData);
@@ -773,8 +893,9 @@ const setupPageHandlers = (io, socket) => {
         parentOperations: [operationId],
       });
 
-      // Push to undo stack (redo becomes undoable)
-      await operationHistoryService.pushToUndoStack(pageId, socket.userId, redoSavedOp.id);
+      // Push to undo stack (redo becomes undoable) without clobbering
+      // whatever popFromRedoStack correctly left behind for further redos.
+      await operationHistoryService.pushToUndoStack(pageId, socket.userId, redoSavedOp.id, { preserveRedoStack: true });
 
       // Send updated undo/redo state
       const canUndoNow = await operationHistoryService.canUndo(pageId, socket.userId);

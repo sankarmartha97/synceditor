@@ -131,22 +131,22 @@ void main() {
         name: 'Test Page',
         version: 1,
         metadata: PageMetadata(),
-        widgets: [
-          PageWidget(
+        widgets: {
+          'widget1': PageWidget(
             id: 'widget1',
             type: 'Container',
             position: const Offset(10, 20),
             size: const Size(100, 100),
             properties: {'color': 'blue'},
           ),
-          PageWidget(
+          'widget2': PageWidget(
             id: 'widget2',
             type: 'Text',
             position: const Offset(50, 60),
             size: const Size(200, 50),
             properties: {'text': 'Hello World'},
           ),
-        ],
+        },
       );
 
       // Test toJson
@@ -164,8 +164,8 @@ void main() {
       expect(pageDataFromJson.name, equals(pageData.name));
       expect(pageDataFromJson.version, equals(pageData.version));
       expect(pageDataFromJson.widgets.length, equals(2));
-      expect(pageDataFromJson.widgets[0].id, equals('widget1'));
-      expect(pageDataFromJson.widgets[1].id, equals('widget2'));
+      expect(pageDataFromJson.widgetList[0].id, equals('widget1'));
+      expect(pageDataFromJson.widgetList[1].id, equals('widget2'));
     });
 
     test('PageModel Complete Serialization', () {
@@ -184,15 +184,15 @@ void main() {
             backgroundColor: '#FFFFFF',
             zoom: 1.0,
           ),
-          widgets: [
-            PageWidget(
+          widgets: {
+            'widget1': PageWidget(
               id: 'widget1',
               type: 'Container',
               position: const Offset(10, 20),
               size: const Size(100, 100),
               properties: {'color': 'blue'},
             ),
-          ],
+          },
         ),
         version: 1,
         createdAt: now,
@@ -218,7 +218,7 @@ void main() {
       expect(pageFromJson.ownerId, equals(page.ownerId));
       expect(pageFromJson.version, equals(page.version));
       expect(pageFromJson.pageData.widgets.length, equals(1));
-      expect(pageFromJson.pageData.widgets[0].id, equals('widget1'));
+      expect(pageFromJson.pageData.widgetList[0].id, equals('widget1'));
       expect(pageFromJson.createdAt, isA<DateTime>());
       expect(pageFromJson.updatedAt, isA<DateTime>());
     });

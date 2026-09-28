@@ -34,6 +34,10 @@ class PageState extends Equatable {
   final bool isSaving;
   final bool isSyncing;
 
+  // Offline resilience (Track D)
+  final bool isOffline;
+  final int pendingSyncCount; // patches queued locally, not yet acked
+
   // Presence & Cursors
   final List<aul.ActiveUser> activeUsers;
 
@@ -64,6 +68,8 @@ class PageState extends Equatable {
     this.isLoading = false,
     this.isSaving = false,
     this.isSyncing = false,
+    this.isOffline = false,
+    this.pendingSyncCount = 0,
     this.activeUsers = const [],
     this.canUndo = false,
     this.canRedo = false,
@@ -87,13 +93,7 @@ class PageState extends Equatable {
 
   PageWidget? get selectedWidget {
     if (selectedWidgetId == null || currentPage == null) return null;
-    try {
-      return currentPage!.pageData.widgets.firstWhere(
-        (w) => w.id == selectedWidgetId,
-      );
-    } catch (e) {
-      return null;
-    }
+    return currentPage!.pageData.widgets[selectedWidgetId];
   }
 
   PermissionType? get currentPagePermission {
@@ -132,6 +132,8 @@ class PageState extends Equatable {
     bool? isLoading,
     bool? isSaving,
     bool? isSyncing,
+    bool? isOffline,
+    int? pendingSyncCount,
     List<aul.ActiveUser>? activeUsers,
     bool? canUndo,
     bool? canRedo,
@@ -163,6 +165,8 @@ class PageState extends Equatable {
       isLoading: isLoading ?? this.isLoading,
       isSaving: isSaving ?? this.isSaving,
       isSyncing: isSyncing ?? this.isSyncing,
+      isOffline: isOffline ?? this.isOffline,
+      pendingSyncCount: pendingSyncCount ?? this.pendingSyncCount,
       activeUsers: activeUsers ?? this.activeUsers,
       canUndo: canUndo ?? this.canUndo,
       canRedo: canRedo ?? this.canRedo,
@@ -197,6 +201,8 @@ class PageState extends Equatable {
     isLoading,
     isSaving,
     isSyncing,
+    isOffline,
+    pendingSyncCount,
     activeUsers,
     canUndo,
     canRedo,

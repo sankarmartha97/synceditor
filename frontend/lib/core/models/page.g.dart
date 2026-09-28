@@ -155,7 +155,7 @@ class PageDataAdapter extends TypeAdapter<PageData> {
       name: fields[1] as String,
       version: fields[2] as int,
       metadata: fields[3] as PageMetadata,
-      widgets: (fields[4] as List).cast<PageWidget>(),
+      widgets: (fields[4] as Map).cast<String, PageWidget>(),
     );
   }
 

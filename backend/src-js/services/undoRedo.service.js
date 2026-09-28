@@ -24,10 +24,14 @@ const generateInverse = (operations, documentBeforeOp) => {
 
     switch (op.op) {
       case 'add':
-        // Inverse of add is remove
+        // Inverse of add is remove. If the add used the "-" append shorthand
+        // (e.g. "/widgets/-"), that path is only valid for adding -- "-" does
+        // not address an existing element, so a remove at that literal path
+        // fails. Resolve it to the concrete index the value was appended at
+        // (the parent array's length before this add) instead.
         inverseOp = {
           op: 'remove',
-          path: op.path,
+          path: resolveConcretePath(documentBeforeOp, op.path),
         };
         break;
 
@@ -79,6 +83,26 @@ const generateInverse = (operations, documentBeforeOp) => {
   }
 
   return inverseOps;
+};
+
+/**
+ * Resolve a JSON Patch "-" append path (e.g. "/widgets/-") to the concrete
+ * index it refers to, given the document as it stood before the add. "-"
+ * means "append to the end of the array", which is only meaningful for
+ * 'add' -- it does not address an existing element, so it can't be reused
+ * as-is for a 'remove'/'replace' that targets what was just added.
+ * @param {Object} documentBeforeOp - Document state before the add
+ * @param {string} path - The add operation's path
+ * @returns {string} The path with "-" resolved to a concrete index, unchanged otherwise
+ */
+const resolveConcretePath = (documentBeforeOp, path) => {
+  if (!path.endsWith('/-')) return path;
+
+  const parentPath = path.slice(0, -2); // strip trailing "/-"
+  const parentArray = parentPath === '' ? documentBeforeOp : getValueAtPath(documentBeforeOp, parentPath);
+  const index = Array.isArray(parentArray) ? parentArray.length : 0;
+
+  return `${parentPath}/${index}`;
 };
 
 /**

@@ -291,8 +291,13 @@ class PageData {
   @HiveField(3)
   final PageMetadata metadata;
 
+  // Keyed by widget id for O(1) lookup/update instead of a linear scan.
+  // A plain Dart Map literal / fromEntries is insertion-ordered (LinkedHashMap
+  // under the hood), and updating an existing key does NOT move it -- so
+  // `.values` reproduces the same order as the wire-format JSON array this
+  // was built from, which patch path indices (/widgets/<index>/...) rely on.
   @HiveField(4)
-  final List<PageWidget> widgets;
+  final Map<String, PageWidget> widgets;
 
   PageData({
     required this.pageId,
@@ -302,17 +307,21 @@ class PageData {
     required this.widgets,
   });
 
+  /// Widgets in wire order -- use this wherever an index into the JSON Patch
+  /// path space is needed (e.g. building a patch to send to the server).
+  List<PageWidget> get widgetList => widgets.values.toList();
+
   factory PageData.fromJson(Map<String, dynamic> json) {
+    final widgetList = (json['widgets'] as List?)
+            ?.map((w) => PageWidget.fromJson(w))
+            .toList() ??
+        [];
     return PageData(
       pageId: json['pageId'] ?? '',
       name: json['name'] ?? '',
       version: json['version'] ?? 1,
       metadata: PageMetadata.fromJson(json['metadata'] ?? {}),
-      widgets:
-          (json['widgets'] as List?)
-              ?.map((w) => PageWidget.fromJson(w))
-              .toList() ??
-          [],
+      widgets: {for (final w in widgetList) w.id: w},
     );
   }
 
@@ -322,7 +331,7 @@ class PageData {
       'name': name,
       'version': version,
       'metadata': metadata.toJson(),
-      'widgets': widgets.map((w) => w.toJson()).toList(),
+      'widgets': widgets.values.map((w) => w.toJson()).toList(),
     };
   }
 
@@ -331,7 +340,7 @@ class PageData {
     String? name,
     int? version,
     PageMetadata? metadata,
-    List<PageWidget>? widgets,
+    Map<String, PageWidget>? widgets,
   }) {
     return PageData(
       pageId: pageId ?? this.pageId,

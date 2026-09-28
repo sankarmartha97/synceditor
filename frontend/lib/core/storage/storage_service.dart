@@ -164,17 +164,35 @@ class StorageService {
 
   // ==================== OPERATIONS QUEUE ====================
 
-  /// Add operation to queue (for offline support)
-  Future<void> queueOperation(Map<String, dynamic> operation) async {
-    final timestamp = DateTime.now().millisecondsSinceEpoch;
-    await _operationsBox?.put(timestamp, operation);
+  /// Add operation to queue (for offline support). Returns the box key the
+  /// operation was stored under, since that's what removeOperation() needs
+  /// -- callers must not assume it matches any timestamp field of their own,
+  /// as that can differ by the few milliseconds between the two calls.
+  Future<int> queueOperation(Map<String, dynamic> operation) async {
+    final key = DateTime.now().millisecondsSinceEpoch;
+    await _operationsBox?.put(key, operation);
     print('⏳ Operation queued: ${operation['type']}');
+    return key;
   }
 
   /// Get all queued operations
   List<Map<String, dynamic>> getQueuedOperations() {
     final operations = _operationsBox?.values.toList() ?? [];
     return operations.map((op) => Map<String, dynamic>.from(op)).toList();
+  }
+
+  /// Get all queued operations together with the box key each is stored
+  /// under, in insertion order. Needed by callers that must remove a
+  /// specific entry later via removeOperation(key).
+  List<MapEntry<int, Map<String, dynamic>>> getQueuedOperationEntries() {
+    final box = _operationsBox;
+    if (box == null) return [];
+    return box.keys
+        .cast<int>()
+        .map(
+          (key) => MapEntry(key, Map<String, dynamic>.from(box.get(key)!)),
+        )
+        .toList();
   }
 
   /// Remove operation from queue

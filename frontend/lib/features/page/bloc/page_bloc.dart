@@ -4,6 +4,9 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:uuid/uuid.dart';
 import '../../../core/services/page_service.dart';
 import '../../../core/services/patch_service.dart';
+import '../../../core/services/page_cache_service.dart';
+import '../../../core/services/offline_patch_queue_service.dart';
+import '../../../core/services/draft_autosave_service.dart';
 import '../../../core/api/page_websocket_client.dart';
 import '../../../core/models/page.dart';
 import '../../../core/models/position_mode.dart';
@@ -18,6 +21,10 @@ class PageBloc extends Bloc<PageEvent, PageState> {
   final PageService _pageService;
   final PatchService _patchService = PatchService();
   final PageWebSocketClient _wsClient = PageWebSocketClient.instance;
+  final PageCacheService _pageCacheService = PageCacheService.instance;
+  final OfflinePatchQueueService _offlineQueue =
+      OfflinePatchQueueService.instance;
+  final DraftAutoSaveService _draftAutoSave = DraftAutoSaveService.instance;
   final CursorManager _cursorManager =
       CursorManager(); // Managed by BLoC, not state
 
@@ -43,6 +50,8 @@ class PageBloc extends Bloc<PageEvent, PageState> {
   StreamSubscription? _followStoppedSubscription;
   StreamSubscription? _viewportUpdatedSubscription;
   StreamSubscription? _followErrorSubscription;
+
+  StreamSubscription? _connectionStateSubscription;
 
   Timer? _cursorThrottleTimer;
   final Duration _cursorThrottleDuration = const Duration(milliseconds: 100);
@@ -120,6 +129,20 @@ class PageBloc extends Bloc<PageEvent, PageState> {
       add(HandlePatchConflict(event));
     });
 
+    // Track connectivity so the UI can distinguish "offline, changes queued"
+    // from a real save failure instead of just showing a generic error.
+    _connectionStateSubscription = _wsClient.connectionState.listen((state) {
+      final offline = state != PageConnectionState.connected;
+      if (!isClosed) {
+        emit(
+          this.state.copyWith(
+            isOffline: offline,
+            pendingSyncCount: _offlineQueue.queueLength,
+          ),
+        );
+      }
+    });
+
     // Listen to page joined event to get initial active users list
     _pageJoinedSubscription = _wsClient.pageJoinedEvents.listen((event) {
       print('ðŸ“„ Joined page: ${event.pageId}');
@@ -131,6 +154,16 @@ class PageBloc extends Bloc<PageEvent, PageState> {
           .toList();
 
       add(UpdateActiveUsers(usersData));
+
+      // Replay any patches queued while we were offline/reconnecting. The
+      // server sets socket permissions during the join handshake, so this
+      // has to wait for page:joined rather than firing on raw connect --
+      // sending page:patch any earlier can race the permission check.
+      _offlineQueue.replay(event.pageId, _wsClient).then((_) {
+        if (!isClosed) {
+          emit(state.copyWith(pendingSyncCount: _offlineQueue.queueLength));
+        }
+      });
     });
 
     // Listen to user presence
@@ -321,6 +354,11 @@ class PageBloc extends Bloc<PageEvent, PageState> {
       );
 
       emit(state.copyWith(currentPage: updatedPage, isSyncing: false));
+
+      // Server has this edit now, so the crash-recovery draft for it is
+      // redundant -- keeping it around would only risk re-offering stale
+      // content if the page is reopened after a later, unrelated crash.
+      _draftAutoSave.deleteDraft(patchEvent.pageId);
     }
   }
 
@@ -596,9 +634,11 @@ class PageBloc extends Bloc<PageEvent, PageState> {
 
   @override
   Future<void> close() {
+    _draftAutoSave.dispose();
     _patchReceivedSubscription?.cancel();
     _patchAppliedSubscription?.cancel();
     _conflictSubscription?.cancel();
+    _connectionStateSubscription?.cancel();
     _pageJoinedSubscription?.cancel();
     _userJoinedSubscription?.cancel();
     _userLeftSubscription?.cancel();
@@ -625,11 +665,38 @@ class PageBloc extends Bloc<PageEvent, PageState> {
     List<Map<String, dynamic>> patches,
     int clientVersion,
   ) {
-    _wsClient.sendPatch(
+    // The optimistic update landed in state.currentPage before this was
+    // called from every mutation handler -- queue it for local durability
+    // in case the app closes before the send below is acked.
+    if (state.currentPage != null) {
+      _draftAutoSave.markModified(pageId, state.currentPage!);
+    }
+
+    final sent = _wsClient.sendPatch(
       pageId: pageId,
       patches: patches,
       clientVersion: clientVersion,
     );
+
+    if (!sent) {
+      // Offline: the change is already applied optimistically in local
+      // state, so queue it for replay on reconnect instead of letting the
+      // 8s timeout below fire a misleading "taking longer than expected"
+      // error for something that was never going to arrive.
+      _offlineQueue
+          .enqueue(pageId: pageId, patches: patches, clientVersion: clientVersion)
+          .then((_) {
+            if (!isClosed) {
+              emit(
+                state.copyWith(
+                  isSyncing: false,
+                  pendingSyncCount: _offlineQueue.queueLength,
+                ),
+              );
+            }
+          });
+      return;
+    }
 
     // Fallback only: the real confirmation is page:patch:applied, handled by
     // _onConfirmPatchApplied. If no ack arrives within a generous window,
@@ -664,6 +731,13 @@ class PageBloc extends Bloc<PageEvent, PageState> {
   }
 
   Future<void> _onLoadPage(LoadPage event, Emitter<PageState> emit) async {
+    if (state.currentPageId != null && state.currentPageId != event.pageId) {
+      // Leaving a different page -- flush and stop its autosave timer before
+      // switching, so its last edits aren't stuck waiting on a timer that's
+      // about to be repointed at the new page.
+      _draftAutoSave.stopAutoSave();
+    }
+
     emit(
       state.copyWith(
         currentPageLoading: true,
@@ -672,30 +746,55 @@ class PageBloc extends Bloc<PageEvent, PageState> {
       ),
     );
 
-    try {
-      // Load page via HTTP first
-      final page = await _pageService.getPageById(event.pageId);
-
-      // Clear existing cursors for new page
+    // Cache-first: if we already have a local copy, paint it immediately
+    // instead of showing a blank spinner for the duration of the REST call.
+    // It also lets the editor open while offline (see Track D).
+    final cachedPage = _pageCacheService.getCachedPage(event.pageId);
+    if (cachedPage != null) {
       _cursorManager.clearAll();
-
       emit(
         state.copyWith(
-          currentPage: page,
+          currentPage: cachedPage,
           currentPageLoading: false,
-          currentPageId: page.id,
+          currentPageId: cachedPage.id,
         ),
       );
+      _wsClient.joinPage(cachedPage.id);
+      _draftAutoSave.startAutoSave(cachedPage.id);
+    }
 
-      // Join page via WebSocket for real-time updates
-      _wsClient.joinPage(page.id);
+    try {
+      final page = await _pageService.getPageById(event.pageId);
+      await _pageCacheService.cachePage(page);
+
+      if (cachedPage == null) {
+        // No cache existed, so this is the first paint.
+        _cursorManager.clearAll();
+        emit(
+          state.copyWith(
+            currentPage: page,
+            currentPageLoading: false,
+            currentPageId: page.id,
+          ),
+        );
+        _wsClient.joinPage(page.id);
+        _draftAutoSave.startAutoSave(page.id);
+      } else if (page.version > cachedPage.version) {
+        // Cache was stale; reconcile with what the server actually has.
+        emit(state.copyWith(currentPage: page));
+      }
     } catch (e) {
-      emit(
-        state.copyWith(
-          currentPageLoading: false,
-          error: 'Failed to load page: ${e.toString()}',
-        ),
-      );
+      if (cachedPage == null) {
+        // Nothing to fall back to, so this is a real failure to surface.
+        emit(
+          state.copyWith(
+            currentPageLoading: false,
+            error: 'Failed to load page: ${e.toString()}',
+          ),
+        );
+      }
+      // Otherwise we already painted the cached copy; a background refresh
+      // failure (e.g. offline) isn't worth interrupting the user for.
     }
   }
 
@@ -722,7 +821,7 @@ class PageBloc extends Bloc<PageEvent, PageState> {
 
       // Add the default container to the page
       final updatedPageData = newPage.pageData.copyWith(
-        widgets: [defaultContainer],
+        widgets: {defaultContainer.id: defaultContainer},
         version: newPage.version + 1,
       );
 
@@ -936,10 +1035,10 @@ class PageBloc extends Bloc<PageEvent, PageState> {
     final currentVersion = state.currentPage!.version;
 
     // Add widget locally first (optimistic update)
-    final updatedWidgets = [
+    final updatedWidgets = {
       ...state.currentPage!.pageData.widgets,
-      event.widget,
-    ];
+      event.widget.id: event.widget,
+    };
 
     final updatedPageData = state.currentPage!.pageData.copyWith(
       widgets: updatedWidgets,
@@ -976,14 +1075,14 @@ class PageBloc extends Bloc<PageEvent, PageState> {
   ) async {
     if (state.currentPage == null) return;
 
-    // Store old data for patch generation and current version BEFORE incrementing
-    final oldData = state.currentPage!.pageData;
     final currentVersion = state.currentPage!.version;
+    final widgets = state.currentPage!.pageData.widgets;
+    final oldWidget = widgets[event.widgetId];
+    if (oldWidget == null) return;
 
-    // Update widget locally first (optimistic update)
-    final updatedWidgets = state.currentPage!.pageData.widgets.map((widget) {
-      return widget.id == event.widgetId ? event.updatedWidget : widget;
-    }).toList();
+    // Update widget locally first (optimistic update) -- O(1) lookup/set
+    // instead of a linear indexWhere + list copy.
+    final updatedWidgets = {...widgets, event.widgetId: event.updatedWidget};
 
     final updatedPageData = state.currentPage!.pageData.copyWith(
       widgets: updatedWidgets,
@@ -1003,8 +1102,23 @@ class PageBloc extends Bloc<PageEvent, PageState> {
 
     emit(state.copyWith(currentPage: updatedPage, isSyncing: true));
 
-    // Generate patch
-    final patches = _patchService.generatePatch(oldData, updatedPageData);
+    // Build the patch directly from the one widget that changed instead of
+    // diffing the whole page -- cost is bounded by this widget's field count,
+    // not by how many widgets the page has. The wire protocol addresses
+    // widgets by array index, so resolve this widget's position in wire
+    // order just for the patch path (the state update above didn't need it).
+    final wireIndex = widgets.keys.toList().indexOf(event.widgetId);
+    final patches = _patchService.generateWidgetFieldPatch(
+      wireIndex,
+      oldWidget,
+      event.updatedWidget,
+    );
+
+    if (patches.isEmpty) {
+      // Nothing actually changed (e.g. redundant update) -- don't sync a no-op
+      emit(state.copyWith(isSyncing: false));
+      return;
+    }
 
     // Send patch via WebSocket with the ORIGINAL version (before increment)
     _sendPatchAndClearSync(
@@ -1021,16 +1135,8 @@ class PageBloc extends Bloc<PageEvent, PageState> {
     if (state.currentPage == null) return;
 
     // âœ¨ NEW: Prevent deletion of default container
-    final widgetToDelete = state.currentPage!.pageData.widgets.firstWhere(
-      (w) => w.id == event.widgetId,
-      orElse: () => PageWidget(
-        id: '',
-        type: '',
-        position: Offset.zero,
-        size: Size.zero,
-        properties: {},
-      ),
-    );
+    final widgetToDelete = state.currentPage!.pageData.widgets[event.widgetId];
+    if (widgetToDelete == null) return;
 
     if (widgetToDelete.isDefaultContainer) {
       print('âš ï¸ Cannot delete the default container');
@@ -1043,9 +1149,9 @@ class PageBloc extends Bloc<PageEvent, PageState> {
     final currentVersion = state.currentPage!.version;
 
     // Remove widget locally first (optimistic update)
-    final updatedWidgets = state.currentPage!.pageData.widgets
-        .where((widget) => widget.id != event.widgetId)
-        .toList();
+    final updatedWidgets = Map<String, PageWidget>.from(
+      state.currentPage!.pageData.widgets,
+    )..remove(event.widgetId);
 
     final updatedPageData = state.currentPage!.pageData.copyWith(
       widgets: updatedWidgets,
@@ -1106,6 +1212,7 @@ class PageBloc extends Bloc<PageEvent, PageState> {
     ClearPageState event,
     Emitter<PageState> emit,
   ) async {
+    _draftAutoSave.stopAutoSave();
     emit(PageState.initial());
   }
 
@@ -1117,7 +1224,10 @@ class PageBloc extends Bloc<PageEvent, PageState> {
   ) async {
     if (state.currentPage == null) return;
 
-    final allWidgets = state.currentPage!.pageData.widgets;
+    // WidgetTreeHelper and the index-based sibling-list mutation below both
+    // work in terms of an ordered List -- .widgetList gives that view without
+    // changing how widgets is actually stored.
+    final allWidgets = state.currentPage!.pageData.widgetList;
     final widgetIndex = allWidgets.indexWhere((w) => w.id == event.widgetId);
     if (widgetIndex == -1) return;
 
@@ -1188,7 +1298,7 @@ class PageBloc extends Bloc<PageEvent, PageState> {
     final currentVersion = state.currentPage!.version;
 
     final updatedPageData = oldData.copyWith(
-      widgets: updatedWidgets,
+      widgets: {for (final w in updatedWidgets) w.id: w},
       version: currentVersion + 1,
     );
 
@@ -1216,7 +1326,7 @@ class PageBloc extends Bloc<PageEvent, PageState> {
   ) async {
     if (state.currentPage == null) return;
 
-    final allWidgets = state.currentPage!.pageData.widgets;
+    final allWidgets = state.currentPage!.pageData.widgetList;
 
     try {
       final widget = allWidgets.firstWhere((w) => w.id == event.widgetId);
@@ -1267,7 +1377,7 @@ class PageBloc extends Bloc<PageEvent, PageState> {
       final currentVersion = state.currentPage!.version;
 
       final updatedPageData = oldData.copyWith(
-        widgets: updatedWidgets,
+        widgets: {for (final w in updatedWidgets) w.id: w},
         version: currentVersion + 1,
       );
 

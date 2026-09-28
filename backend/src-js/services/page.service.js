@@ -4,6 +4,7 @@
  */
 
 const { pool } = require('../config/database');
+const { syncPageWidgets, buildPageDataFromWidgets } = require('./pageWidgetsSync.service');
 
 const PermissionType = {
   OWNER: 'owner',
@@ -93,7 +94,8 @@ class PageService {
           snapToGrid: data.metadata?.snapToGrid || false,
           zoom: data.metadata?.zoom || 1.0,
         },
-        widgets: [],
+        // page_data is metadata-only (Track B3) -- a new page has no widgets
+        // yet, so there's nothing to write to page_widgets either.
       };
       
       // Insert page
@@ -148,10 +150,16 @@ class PageService {
     if (result.rows.length === 0) {
       return null;
     }
-    
-    return this.mapToPage(result.rows[0]);
+
+    const row = result.rows[0];
+
+    // Track B2 cutover: widgets now come from page_widgets, not the blob.
+    // Metadata/name/etc. still come from page_data until B3.
+    row.page_data = await buildPageDataFromWidgets(row.id, row.page_data);
+
+    return this.mapToPage(row);
   }
-  
+
   /**
    * Get all pages accessible to user
    */
@@ -209,22 +217,40 @@ class PageService {
       }
       
       if (data.pageData) {
+        // Track B3: page_data is metadata-only -- strip widgets before storing,
+        // page_widgets is the sole source of truth for widget content.
+        const { widgets: _widgets, ...metadataOnlyPageData } = data.pageData;
         updates.push(`page_data = $${paramCount++}`);
-        values.push(JSON.stringify(data.pageData));
+        values.push(JSON.stringify(metadataOnlyPageData));
       }
-      
+
       updates.push(`updated_at = NOW()`);
       values.push(pageId);
-      
+
       const result = await client.query(
-        `UPDATE pages 
+        `UPDATE pages
          SET ${updates.join(', ')}
          WHERE id = $${paramCount}
          RETURNING *`,
         values
       );
-      
-      return this.mapToPage(result.rows[0]);
+
+      // Persist widget changes to their rows (see page:patch socket handler) --
+      // this REST path can also carry widget changes, via data.pageData.widgets.
+      if (data.pageData) {
+        try {
+          await syncPageWidgets(pageId, data.pageData, userId);
+        } catch (syncError) {
+          console.error('❌ Failed to persist widget changes to page_widgets (REST update):', syncError);
+        }
+      }
+
+      // page_data is metadata-only now -- reattach current widgets from
+      // page_widgets before returning, same as getPageById.
+      const updatedRow = result.rows[0];
+      updatedRow.page_data = await buildPageDataFromWidgets(pageId, updatedRow.page_data);
+
+      return this.mapToPage(updatedRow);
     } finally {
       client.release();
     }
