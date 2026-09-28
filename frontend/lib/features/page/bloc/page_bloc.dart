@@ -805,6 +805,7 @@ class PageBloc extends Bloc<PageEvent, PageState> {
       final newPage = await _pageService.createPage(
         name: event.name,
         metadata: event.metadata,
+        projectId: event.projectId,
       );
 
       // âœ¨ V2.1: Add default container to new pages

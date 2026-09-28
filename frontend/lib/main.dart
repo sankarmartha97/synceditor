@@ -3,13 +3,16 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'core/api/api_client.dart';
 import 'core/services/page_service.dart';
+import 'core/services/project_service.dart';
 import 'core/storage/storage_service.dart';
 import 'core/storage/hive_adapters.dart';
 import 'core/models/user.dart';
 import 'core/models/page.dart';
 import 'core/models/position_mode.dart';
+import 'core/models/project.dart';
 import 'features/page/bloc/page_bloc.dart';
-import 'features/page/views/page_dashboard.dart';
+import 'features/project/bloc/project_bloc.dart';
+import 'features/project/views/projects_dashboard.dart';
 import 'features/auth/bloc/auth_bloc.dart';
 import 'features/auth/bloc/auth_event.dart';
 import 'features/auth/bloc/auth_state.dart';
@@ -45,6 +48,8 @@ Future<void> _initializeHive() async {
     Hive.registerAdapter(PageDataAdapter());
     Hive.registerAdapter(PageModelAdapter());
     Hive.registerAdapter(PositionModeAdapter());
+    Hive.registerAdapter(ProjectListItemAdapter());
+    Hive.registerAdapter(ProjectMemberAdapter());
 
     // Initialize storage service (open all boxes)
     await StorageService.instance.init();
@@ -64,11 +69,13 @@ class SyncEditorApp extends StatelessWidget {
     // Initialize services
     final apiClient = ApiClient.instance;
     final pageService = PageService(apiClient);
+    final projectService = ProjectService.instance;
 
     return MultiBlocProvider(
       providers: [
         BlocProvider(create: (context) => AuthBloc()..add(const AppStarted())),
         BlocProvider(create: (context) => PageBloc(pageService)),
+        BlocProvider(create: (context) => ProjectBloc(projectService)),
       ],
       child: MaterialApp(
         title: 'Sync Editor',
@@ -98,9 +105,9 @@ class SyncEditorApp extends StatelessWidget {
               );
             }
 
-            // If authenticated, show page dashboard
+            // If authenticated, show projects dashboard (root of the app).
             if (state is AuthAuthenticated) {
-              return const PageDashboard();
+              return const ProjectsDashboard();
             }
 
             // Otherwise show login screen

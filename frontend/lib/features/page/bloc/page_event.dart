@@ -28,11 +28,12 @@ class LoadPage extends PageEvent {
 class CreatePage extends PageEvent {
   final String name;
   final PageMetadata? metadata;
+  final String? projectId;
 
-  const CreatePage({required this.name, this.metadata});
+  const CreatePage({required this.name, this.metadata, this.projectId});
 
   @override
-  List<Object?> get props => [name, metadata];
+  List<Object?> get props => [name, metadata, projectId];
 }
 
 /// Update page (sync to backend)

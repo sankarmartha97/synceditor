@@ -425,6 +425,7 @@ class PageListItem {
   final String name;
   final String ownerId;
   final int version;
+  final String? projectId;
   final PermissionType permission;
   final DateTime updatedAt;
   final DateTime createdAt;
@@ -434,6 +435,7 @@ class PageListItem {
     required this.name,
     required this.ownerId,
     required this.version,
+    this.projectId,
     required this.permission,
     required this.updatedAt,
     required this.createdAt,
@@ -445,6 +447,7 @@ class PageListItem {
       name: json['name'],
       ownerId: json['ownerId'],
       version: json['version'],
+      projectId: json['projectId'] as String?,
       permission: _parsePermission(json['permission']),
       updatedAt: DateTime.parse(json['updatedAt']),
       createdAt: DateTime.parse(json['createdAt']),

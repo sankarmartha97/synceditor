@@ -129,14 +129,39 @@ Not part of the original plan -- discovered while verifying B3 with a real multi
 
 ---
 
-## Track E — Projects Layer
+## Track E — Projects Layer ✅ Done (2026-09-28)
 
-- [ ] Add a `projects` table: `id, name, owner_id, created_at`
-- [ ] Add a `project_id` foreign key on `pages`
-- [ ] Add a `project_permissions` table — project access grants all its pages by default, with `page_permissions` entries acting as page-level overrides
-- [ ] Frontend: add a projects list screen above the current page dashboard; page creation and loading become project-scoped
-- [ ] Decide and implement cascade behavior: deleting a project soft-deletes its pages, consistent with how pages already use `deleted_at`
-- [ ] Later, optionally: introduce a `workspaces` table above projects for full multi-tenant plan/quota support and Postgres row-level security keyed on `workspace_id`
+- [x] Add a `projects` table: `id, name, owner_id, description, created_at, updated_at, deleted_at` ✅ (2026-09-28)
+  — `database/migrations/011_create_projects_table.sql`. Soft-deletes via `deleted_at`, indexed on `owner_id`. Applied and verified against the dev database.
+
+- [x] Add a `project_id` foreign key on `pages` ✅ (2026-09-28)
+  — `database/migrations/012_add_project_id_to_pages.sql`. Nullable (existing pages keep `NULL` and appear as "Personal Pages"). `ON DELETE SET NULL` so deleting a project's `projects` row doesn't also cascade-delete pages directly — the soft-delete path in `project.service.js` handles that explicitly instead.
+
+- [x] Add a `project_permissions` table — project access grants all its pages by default, with `page_permissions` entries acting as page-level overrides ✅ (2026-09-28)
+  — `database/migrations/013_create_project_permissions_table.sql`. Design decision: `project_permissions` is a **bookkeeping table**, not a second runtime check. Adding a user to a project (or creating a page inside one) fans out rows into `page_permissions` immediately, so the existing single-table page-level permission gate (used everywhere: REST handlers, socket `page:join`, undo/redo) stays unchanged. The alternative — adding a `project_permissions OR page_permissions` join to every query — would have touched the socket handler, OT path, and all permission checks at once, which is higher risk with no isolated test coverage for those paths.
+
+- [x] Backend: `project.service.js` + `project.routes.js`, wired into `app.js` ✅ (2026-09-28)
+  — `backend/src-js/services/project.service.js`: `createProject`, `getUserProjects`, `getProjectById`, `updateProject`, `deleteProject` (soft-deletes project + all its pages in a transaction), `addMember` (upserts `project_permissions`, fans out `page_permissions` to all current pages), `removeMember` (removes `project_permissions` and non-owner `page_permissions`), `getMembers`, `grantProjectMembersPageAccess` (called by `page.service.js` on page creation).
+  — `backend/src-js/routes/project.routes.js`: `GET/POST /api/projects`, `GET/PATCH/DELETE /api/projects/:id`, `GET /api/projects/:id/pages`, `GET/POST /api/projects/:id/members`, `DELETE /api/projects/:id/members/:userId`. All behind `authMiddleware`.
+  — `backend/src-js/services/page.service.js` updated: `createPage` accepts optional `projectId`, inserts it into the `pages` row, then calls `grantProjectMembersPageAccess` if set (within the same transaction). `getUserPages` and `mapToPage` now return `projectId` in the response.
+
+- [x] Frontend: add a projects list screen above the current page dashboard; page creation and loading become project-scoped ✅ (2026-09-28)
+  — New Hive types `ProjectListItem` (typeId 8) and `ProjectMember` (typeId 9) in `frontend/lib/core/models/project.dart` + manually-written `project.g.dart` adapter. Both adapters registered in `main.dart`.
+  — `frontend/lib/core/services/project_service.dart`: REST client wrapping all `/api/projects` endpoints.
+  — `frontend/lib/features/project/bloc/` — `ProjectEvent`, `ProjectState`, `ProjectBloc` covering all CRUD, member management, and project-page loading.
+  — `frontend/lib/features/project/views/projects_dashboard.dart`: new root screen. Shows a "Personal Pages" tile (pages with no project, navigates to the existing `PageDashboard`) plus a list of all user's projects. Project cards show permission badge, last-updated, description. Owner gets rename/delete popup actions. FAB creates a new project.
+  — `frontend/lib/features/project/views/project_pages_dashboard.dart`: project-scoped page list. Uses `ProjectBloc` for the page list (calls `LoadProjectPages` on init, refreshes after returning from editor) and `PageBloc` to open and create pages. Create dialog passes `projectId` to `CreatePage` event. Owner gets an invite member button that dispatches `AddProjectMember`.
+  — `PageListItem` in `page.dart` updated: added `projectId: String?` field and parsed from JSON.
+  — `CreatePage` event in `page_event.dart` updated: added optional `projectId` field, threaded through `_onCreatePage` in `page_bloc.dart` to `PageService.createPage`.
+  — `frontend/lib/core/api/endpoints.dart` updated with project endpoint constants.
+  — `main.dart` updated: `AuthAuthenticated` now shows `ProjectsDashboard` (root) instead of `PageDashboard` directly. `ProjectBloc` added to the root `MultiBlocProvider`.
+
+- [x] Decide and implement cascade behavior: deleting a project soft-deletes its pages ✅ (2026-09-28)
+  — `project.service.js deleteProject`: in a single transaction, `UPDATE pages SET deleted_at = NOW() WHERE project_id = $1 AND deleted_at IS NULL`, then `UPDATE projects SET deleted_at = NOW() WHERE id = $1`. Consistent with how `page.service.js deletePage` already uses `deleted_at`. The `DELETE /api/projects/:id` route checks the caller is the project owner (via `project_permissions`) before proceeding.
+
+- [ ] Later, optionally: introduce a `workspaces` table above projects for full multi-tenant plan/quota support and Postgres row-level security keyed on `workspace_id` — deferred, not part of this engagement's scope.
+
+  **What's NOT verified, and needs a human:** no browser-automation tool is available. The full flow — create a project, create pages inside it, invite a member, open a page from the project dashboard, delete a project and confirm pages are gone — requires manual browser verification. `flutter analyze` produced zero new errors (421 total, up from 417 pre-existing; the 4 new items are all `info` level: `use_build_context_synchronously` in `.then()` callbacks and one `deprecated_member_use`, same categories as the pre-existing issues). `flutter test` 20/21 pass, same as before Track E. Migrations applied clean against the dev database. New backend modules (`project.service.js`, `project.routes.js`, updated `app.js`) all load without errors.
 
 ---
 

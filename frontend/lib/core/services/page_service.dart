@@ -11,6 +11,7 @@ class PageService {
   Future<PageModel> createPage({
     required String name,
     PageMetadata? metadata,
+    String? projectId,
   }) async {
     try {
       final response = await _apiClient.post(
@@ -18,6 +19,7 @@ class PageService {
         data: {
           'name': name,
           if (metadata != null) 'metadata': metadata.toJson(),
+          if (projectId != null) 'projectId': projectId,
         },
       );
 

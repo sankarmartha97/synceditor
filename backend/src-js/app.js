@@ -82,11 +82,13 @@ const authRoutes = require('./routes/auth.routes');
 const canvasRoutes = require('./routes/canvas.routes');
 const pageRoutes = require('./routes/page.routes');
 const commentsRoutes = require('./routes/comments.routes');
+const projectRoutes = require('./routes/project.routes');
 
 // Use routes
 app.use('/api/auth', authRoutes);
 app.use('/api/canvases', canvasRoutes); // Legacy - keep for backward compatibility
 app.use('/api/pages', pageRoutes); // New page-based API
+app.use('/api/projects', projectRoutes); // Projects layer (Track E)
 app.use('/api', commentsRoutes); // Comments API (supports both /api/pages/:pageId/comments and /api/comments/:id)
 
 // ============================================

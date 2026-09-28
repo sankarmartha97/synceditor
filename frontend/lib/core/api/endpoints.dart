@@ -56,6 +56,14 @@ class ApiEndpoints {
   static String batchUpdateWidgets(String canvasId) =>
       '$apiVersion/canvases/$canvasId/widgets/batch';
 
+  // Project Endpoints (Track E)
+  static const String projects = '$apiVersion/projects';
+  static String projectById(String id) => '$apiVersion/projects/$id';
+  static String projectPages(String id) => '$apiVersion/projects/$id/pages';
+  static String projectMembers(String id) => '$apiVersion/projects/$id/members';
+  static String projectMemberById(String projectId, String userId) =>
+      '$apiVersion/projects/$projectId/members/$userId';
+
   // Health Check
   static const String health = '/health';
 }

@@ -5,6 +5,12 @@
 
 const { pool } = require('../config/database');
 const { syncPageWidgets, buildPageDataFromWidgets } = require('./pageWidgetsSync.service');
+// Lazy-required to avoid circular dependency (project.service also requires nothing from page.service).
+let _projectService = null;
+const getProjectService = () => {
+  if (!_projectService) _projectService = require('./project.service');
+  return _projectService;
+};
 
 const PermissionType = {
   OWNER: 'owner',
@@ -98,32 +104,39 @@ class PageService {
         // yet, so there's nothing to write to page_widgets either.
       };
       
-      // Insert page
+      // Insert page (project_id is optional; null for uncategorized pages).
+      const projectId = data.projectId || null;
       const pageResult = await client.query(
-        `INSERT INTO pages (name, owner_id, page_data, version)
-         VALUES ($1, $2, $3, $4)
+        `INSERT INTO pages (name, owner_id, page_data, version, project_id)
+         VALUES ($1, $2, $3, $4, $5)
          RETURNING *`,
-        [data.name, userId, JSON.stringify(pageData), 1]
+        [data.name, userId, JSON.stringify(pageData), 1, projectId]
       );
-      
+
       const page = pageResult.rows[0];
-      
+
       // Update pageId in page_data
       page.page_data.pageId = page.id;
       await client.query(
         `UPDATE pages SET page_data = $1 WHERE id = $2`,
         [JSON.stringify(page.page_data), page.id]
       );
-      
+
       // Grant owner permission
       await client.query(
         `INSERT INTO page_permissions (page_id, user_id, permission_type, granted_by)
          VALUES ($1, $2, $3, $4)`,
         [page.id, userId, PermissionType.OWNER, userId]
       );
-      
+
+      // If the page belongs to a project, fan out page_permissions to every
+      // existing project member so they can access it immediately.
+      if (projectId) {
+        await getProjectService().grantProjectMembersPageAccess(client, page.id, projectId, userId);
+      }
+
       await client.query('COMMIT');
-      
+
       return this.mapToPage(page);
     } catch (error) {
       await client.query('ROLLBACK');
@@ -165,21 +178,22 @@ class PageService {
    */
   async getUserPages(userId) {
     const result = await pool.query(
-      `SELECT p.id, p.name, p.owner_id, p.version, p.created_at, p.updated_at,
-              pp.permission_type
+      `SELECT p.id, p.name, p.owner_id, p.version, p.project_id,
+              p.created_at, p.updated_at, pp.permission_type
        FROM pages p
        INNER JOIN page_permissions pp ON p.id = pp.page_id
-       WHERE pp.user_id = $1 
+       WHERE pp.user_id = $1
        AND p.deleted_at IS NULL
        ORDER BY p.updated_at DESC`,
       [userId]
     );
-    
+
     return result.rows.map(row => ({
       id: row.id,
       name: row.name,
       ownerId: row.owner_id,
       version: row.version,
+      projectId: row.project_id,
       permission: row.permission_type,
       updatedAt: row.updated_at,
       createdAt: row.created_at,
@@ -445,6 +459,7 @@ class PageService {
       id: row.id,
       name: row.name,
       ownerId: row.owner_id,
+      projectId: row.project_id || null,
       pageData: row.page_data,
       version: row.version,
       createdAt: row.created_at,
